@@ -102,10 +102,15 @@ class IpcServer:
             params.get("text", ""), params.get("action", ""))}
 
     def _set_config(self, params: dict) -> dict:
+        stt_changed = any(k.startswith("stt.") for k in params)
         for key, value in params.items():
             self.config.set(key, value)
         self.config.save()
-        return {"ok": True}
+        result = {"ok": True}
+        if stt_changed:
+            # a resident model won't change on its own — rebuild it
+            result.update(self.pipeline.reload_stt())
+        return result
 
     def _reload_user_data(self, params: dict) -> dict:
         self.pipeline.snippets.reload()

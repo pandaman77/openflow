@@ -47,12 +47,7 @@ class PipelineResult:
 class Pipeline:
     def __init__(self, config: Config):
         self.config = config
-        self.transcriber = Transcriber(
-            model_name=config.get("stt.model"),
-            device=config.get("stt.device"),
-            compute_type=config.get("stt.compute_type"),
-            beam_size=config.get("stt.beam_size"),
-        )
+        self.transcriber = self._build_transcriber()
         self.snippets = SnippetStore()
         self.commands = CommandDetector()
         self.dictionary = PersonalDictionary()
@@ -64,11 +59,33 @@ class Pipeline:
             temperature=config.get("llm.temperature"),
         )
 
+    def _build_transcriber(self) -> Transcriber:
+        return Transcriber(
+            model_name=self.config.get("stt.model"),
+            device=self.config.get("stt.device"),
+            compute_type=self.config.get("stt.compute_type"),
+            beam_size=self.config.get("stt.beam_size"),
+        )
+
     def warmup(self) -> dict[str, Any]:
         """Load the STT model up-front so the first dictation isn't slow."""
         self.transcriber.load()
         return {"stt_device": self.transcriber.resolved_device,
                 "smart_available": self.smart.available()}
+
+    def reload_stt(self) -> dict[str, Any]:
+        """Swap in a fresh transcriber after the model/device config changed.
+        The old model was resident; without this a model switch has no effect."""
+        old = (self.transcriber.model_name, self.transcriber.device,
+               self.transcriber.compute_type, self.transcriber.beam_size)
+        new = (self.config.get("stt.model"), self.config.get("stt.device"),
+               self.config.get("stt.compute_type"), self.config.get("stt.beam_size"))
+        if old == new:
+            return {"reloaded": False}
+        log.info("stt config changed %s -> %s, reloading", old, new)
+        self.transcriber = self._build_transcriber()
+        self.transcriber.load()
+        return {"reloaded": True, "stt_device": self.transcriber.resolved_device}
 
     def process_audio(self, audio: np.ndarray, active_app: str | None = None) -> PipelineResult:
         timings: dict[str, float] = {}
