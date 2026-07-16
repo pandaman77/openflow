@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.coverage
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+
+# Rust
+target/
+
+# Models (веса не храним в git — только манифесты)
+models/*.bin
+models/*.gguf
+models/*.onnx
+models/whisper-*/
+models/llm/
+
+# IDE / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+
+# Local
+*.log
+tmp/
+.env
+
+# PyInstaller build artifacts
+build/
+dist/
+*.spec

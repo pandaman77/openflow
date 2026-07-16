@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-base text-text antialiased font-body;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* faint studio texture: horizontal scanlines like a mixing desk */
+.studio-bg {
+  background-image: repeating-linear-gradient(
+    180deg,
+    transparent 0px,
+    transparent 3px,
+    rgba(233, 239, 236, 0.012) 3px,
+    rgba(233, 239, 236, 0.012) 4px
+  );
+}
+
+/* overlay window: transparent, never scrolls */
+html:has(#overlay-root),
+body:has(#overlay-root) {
+  background: transparent;
+  overflow: hidden;
+}
+
+/* the signature wave: a breathing line that carries engine state */
+@keyframes wave-drift {
+  from { transform: translateX(0); }
+  to { transform: translateX(-120px); }
+}
+
+.wave-live {
+  animation: wave-drift 6s linear infinite;
+}
+
+.wave-hot {
+  animation: wave-drift 1.2s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wave-live,
+  .wave-hot {
+    animation: none;
+  }
+}
+
+/* focus ring tuned to the palette */
+:focus-visible {
+  outline: 2px solid #f2a35c;
+  outline-offset: 2px;
+  border-radius: 4px;
+}

@@ -1,0 +1,63 @@
+{
+  "stt": [
+    {
+      "id": "tiny",
+      "hf_repo": "Systran/faster-whisper-tiny",
+      "size_mb": 75,
+      "note": "fastest, lowest accuracy; ok for weak CPUs"
+    },
+    {
+      "id": "base",
+      "hf_repo": "Systran/faster-whisper-base",
+      "size_mb": 145,
+      "note": "good latency/accuracy floor for CPU-only machines"
+    },
+    {
+      "id": "small",
+      "hf_repo": "Systran/faster-whisper-small",
+      "size_mb": 484,
+      "note": "default; solid RU/EN on CPU int8, fast on GPU"
+    },
+    {
+      "id": "medium",
+      "hf_repo": "Systran/faster-whisper-medium",
+      "size_mb": 1530,
+      "note": "GPU recommended"
+    },
+    {
+      "id": "large-v3",
+      "hf_repo": "Systran/faster-whisper-large-v3",
+      "size_mb": 3090,
+      "note": "best accuracy; needs GPU (>=6 GB VRAM) for realtime feel"
+    },
+    {
+      "id": "large-v3-turbo",
+      "hf_repo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
+      "size_mb": 1620,
+      "note": "near large-v3 accuracy at ~4x speed; best choice on GPU"
+    }
+  ],
+  "llm": [
+    {
+      "id": "qwen2.5-0.5b-instruct-q8",
+      "hf_repo": "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+      "hf_file": "qwen2.5-0.5b-instruct-q8_0.gguf",
+      "size_mb": 531,
+      "note": "minimal smart-cleanup model; weak but fast on any CPU"
+    },
+    {
+      "id": "qwen2.5-1.5b-instruct-q4",
+      "hf_repo": "Qwen/Qwen2.5-1.5B-Instruct-GGUF",
+      "hf_file": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+      "size_mb": 1120,
+      "note": "default smart-cleanup model; good RU/EN, ok on CPU"
+    },
+    {
+      "id": "qwen2.5-3b-instruct-q4",
+      "hf_repo": "Qwen/Qwen2.5-3B-Instruct-GGUF",
+      "hf_file": "qwen2.5-3b-instruct-q4_k_m.gguf",
+      "size_mb": 2100,
+      "note": "better polishing; GPU or strong CPU recommended"
+    }
+  ]
+}

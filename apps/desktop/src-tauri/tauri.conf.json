@@ -1,0 +1,63 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "OpenFlow",
+  "version": "0.1.0",
+  "identifier": "dev.openflow.app",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "OpenFlow",
+        "width": 900,
+        "height": 640,
+        "resizable": false,
+        "maximizable": false,
+        "visible": false,
+        "center": true
+      },
+      {
+        "label": "overlay",
+        "title": "OpenFlow Overlay",
+        "url": "/#/overlay",
+        "width": 460,
+        "height": 72,
+        "visible": false,
+        "focus": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "shadow": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'"
+    },
+    "trayIcon": {
+      "iconPath": "icons/icon.png",
+      "tooltip": "OpenFlow — voice dictation"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["msi", "nsis"],
+    "icon": ["icons/icon.png", "icons/icon.ico"],
+    "externalBin": ["binaries/openflow-engine"],
+    "windows": {
+      "wix": { "language": ["en-US", "ru-RU"] }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://github.com/openflow-app/openflow/releases/latest/download/latest.json"],
+      "pubkey": ""
+    }
+  }
+}

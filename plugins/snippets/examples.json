@@ -1,0 +1,6 @@
+[
+  {"trigger": "мой календарь", "text": "https://cal.com/username", "folder": "links"},
+  {"trigger": "моя почта", "text": "user@example.com", "folder": "personal"},
+  {"trigger": "my calendar", "text": "https://cal.com/username", "folder": "links"},
+  {"trigger": "подпись", "text": "С уважением,\nНиколай Шарапов", "folder": "email"}
+]
