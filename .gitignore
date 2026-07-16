@@ -37,3 +37,6 @@ tmp/
 build/
 dist/
 *.spec
+
+# CI added separately (needs workflow-scope token)
+.github/workflows/
