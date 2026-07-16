@@ -2,10 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
+html,
 body {
   @apply bg-base text-text antialiased font-body;
   -webkit-user-select: none;
   user-select: none;
+  overflow-x: hidden;
+}
+
+/* long device names must never widen the window — clip inside the control */
+select {
+  max-width: 100%;
+  text-overflow: ellipsis;
 }
 
 /* faint studio texture: horizontal scanlines like a mixing desk */

@@ -91,11 +91,13 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
                     let was_active = ACTIVE.load(Ordering::SeqCst);
                     if all_down && !was_active {
                         ACTIVE.store(true, Ordering::SeqCst);
+                        log::info!("ptt combo pressed");
                         if let Some(tx) = EVENTS.get() {
                             let _ = tx.send(true);
                         }
                     } else if !all_down && was_active {
                         ACTIVE.store(false, Ordering::SeqCst);
+                        log::info!("ptt combo released");
                         if let Some(tx) = EVENTS.get() {
                             let _ = tx.send(false);
                         }
@@ -120,9 +122,16 @@ pub fn install(app: AppHandle, ptt_spec: &str) -> Result<(), String> {
         while let Ok(start) = rx.recv() {
             let engine = app.state::<Engine>();
             if start {
-                let _ = crate::commands::start_dictation(app.clone(), engine);
+                log::info!("ptt -> start_dictation");
+                if let Err(e) = crate::commands::start_dictation(app.clone(), engine) {
+                    log::error!("start_dictation failed: {e}");
+                }
             } else {
-                let _ = crate::commands::stop_dictation(app.clone(), engine);
+                log::info!("ptt -> stop_dictation");
+                let engine = app.state::<Engine>();
+                if let Err(e) = crate::commands::stop_dictation(app.clone(), engine) {
+                    log::error!("stop_dictation failed: {e}");
+                }
             }
         }
     });

@@ -12,6 +12,22 @@ use std::sync::Mutex;
 
 use serde_json::{json, Value};
 
+/// A hard-killed shell leaves its engine child orphaned; on next launch we
+/// reap any stray engine processes so we don't stack up (and hog the mic).
+#[cfg(windows)]
+fn kill_orphan_engines() {
+    use std::os::windows::process::CommandExt;
+    let _ = Command::new("taskkill")
+        .args(["/F", "/IM", "openflow-engine.exe"])
+        .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
+#[cfg(not(windows))]
+fn kill_orphan_engines() {}
+
 /// %APPDATA%\OpenFlow\engine.log — the engine's stderr (its logging output).
 fn engine_log_file() -> Option<File> {
     let dir = std::path::PathBuf::from(std::env::var_os("APPDATA")?).join("OpenFlow");
@@ -61,6 +77,7 @@ impl Engine {
         if guard.is_some() {
             return Ok(());
         }
+        kill_orphan_engines();
         let mut cmd = Self::engine_command();
         // Engine logs go to a file: a GUI parent has no console, so
         // inheriting stderr would hand the child an invalid handle.

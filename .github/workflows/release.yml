@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      - name: Build engine sidecar (PyInstaller)
+        run: |
+          pip install -e "core/openflow-engine" pyinstaller
+          pyinstaller --onefile --name openflow-engine-x86_64-pc-windows-msvc `
+            --collect-all faster_whisper --collect-all ctranslate2 `
+            core/openflow-engine/engine_entry.py
+          New-Item -ItemType Directory -Force apps/desktop/src-tauri/binaries
+          Move-Item dist/openflow-engine-x86_64-pc-windows-msvc.exe apps/desktop/src-tauri/binaries/
+        shell: pwsh
+
+      - name: Frontend deps
+        run: npm ci
+        working-directory: apps/desktop
+
+      - name: Tauri build (MSI + NSIS)
+        run: npx tauri build
+        working-directory: apps/desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Portable ZIP
+        run: |
+          $bundle = "apps/desktop/src-tauri/target/release"
+          New-Item -ItemType Directory -Force portable/OpenFlow
+          Copy-Item "$bundle/openflow.exe" portable/OpenFlow/
+          Copy-Item "apps/desktop/src-tauri/binaries/openflow-engine-x86_64-pc-windows-msvc.exe" portable/OpenFlow/openflow-engine.exe
+          Compress-Archive -Path portable/OpenFlow -DestinationPath OpenFlow-portable-x64.zip
+        shell: pwsh
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            apps/desktop/src-tauri/target/release/bundle/msi/*.msi
+            apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
+            OpenFlow-portable-x64.zip
+          generate_release_notes: true
