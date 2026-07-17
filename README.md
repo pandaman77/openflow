@@ -1,59 +1,59 @@
 # OpenFlow
 
-**Open-source, local-first voice dictation layer for Windows.**
-A free alternative to [Wispr Flow](https://wisprflow.ai/) that runs 100% on your machine — no cloud, no subscriptions, no data leaving your PC.
+**Голосовой диктовщик для Windows с открытым кодом. Работает полностью локально.**
+Бесплатная альтернатива [Wispr Flow](https://wisprflow.ai/): всё крутится на вашем компьютере — без облака, без подписок, ничего не уходит в сеть.
 
 ![platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0b7ec2)
 ![license](https://img.shields.io/badge/license-MIT-green)
-![local](https://img.shields.io/badge/inference-100%25%20local-f2a35c)
+![local](https://img.shields.io/badge/распознавание-100%25%20локально-f2a35c)
 
-Hold a hotkey → speak naturally → release → polished text appears in whatever app you're using. Cursor, VS Code, browsers, Telegram, Word, terminals — anywhere.
+Зажал горячую клавишу → говоришь → отпустил → чистый текст появляется прямо там, где стоит курсор. В Cursor, VS Code, браузере, Telegram, Word, терминале — где угодно.
 
-## Download
+## Скачать
 
-Grab the latest installer from the [**Releases**](../../releases) page (`OpenFlow_x64-setup.exe`).
-On first launch a short wizard picks your microphone and downloads the speech model (~500 MB, once).
+Возьмите последнюю версию установщика на странице [**Releases**](../../releases) (`OpenFlow_x64-setup.exe`).
+При первом запуске короткий мастер выберет микрофон и скачает модель распознавания (~500 МБ, один раз).
 
-- Hold **Ctrl + Win**, speak, release — the text lands where your cursor is.
-- Everything runs on your machine. NVIDIA GPU is used automatically if present; otherwise it runs on CPU.
+- Зажми **Ctrl + Win**, говори, отпусти — текст вставится туда, где курсор.
+- Всё работает на вашей машине. Видеокарта NVIDIA используется автоматически, если есть; иначе — на процессоре.
 
-## How it works
+## Как это устроено
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│  Tauri Shell (Rust)                                  │
-│  tray · overlay · settings UI (React)                │
-│  global hotkeys · text insertion · window detection  │
+│  Оболочка Tauri (Rust)                               │
+│  трей · оверлей · настройки (React)                  │
+│  глобальные хоткеи · вставка текста · активное окно  │
 └──────────────────────┬───────────────────────────────┘
-                       │ JSON-RPC over stdio
+                       │ JSON-RPC через stdio
 ┌──────────────────────▼───────────────────────────────┐
-│  Python Engine (sidecar)                             │
-│  mic capture · Silero VAD · faster-whisper STT       │
-│  RU/EN + mixed language · Fast/Smart text cleanup    │
-│  snippets · voice commands · personal dictionary     │
+│  Движок на Python (sidecar)                          │
+│  захват микрофона · VAD · faster-whisper (STT)       │
+│  RU/EN + смешанная речь · быстрая/умная очистка      │
+│  сниппеты · голосовые команды · личный словарь       │
 └──────────────────────────────────────────────────────┘
 ```
 
-- **Fast mode** — rule-based cleanup (fillers, spacing, capitalization). Near-zero added latency.
-- **Smart mode** — local LLM polishing via llama.cpp (punctuation, formatting, style). Fully offline.
+- **Быстрый режим** — очистка по правилам (слова-паразиты, пробелы, заглавные, знаки вопроса). Почти без задержки.
+- **Умный режим** — полировка локальной языковой моделью через llama.cpp (пунктуация, форматирование, стиль). Тоже полностью офлайн.
 
-## Status
+## Статус
 
-Working alpha. End-to-end dictation runs today: capture → VAD → faster-whisper → cleanup → insertion, with a system tray, an always-on overlay, global push-to-talk, and a settings UI. CUDA (int8) and CPU are both supported. See [docs/ROADMAP.md](docs/ROADMAP.md) for what's next.
+Рабочая альфа. Диктовка работает от начала до конца: захват → VAD → faster-whisper → очистка → вставка, плюс иконка в трее, постоянный оверлей, глобальный push-to-talk и окно настроек. Поддерживаются и CUDA (int8), и CPU. Что дальше — в [docs/ROADMAP.md](docs/ROADMAP.md).
 
-## Repository layout
+## Структура репозитория
 
-| Path | What |
-|------|------|
-| `apps/desktop/` | Tauri app: React UI + Rust native layer |
-| `core/openflow-engine/` | Python sidecar: audio, VAD, STT, cleanup |
-| `models/` | Model manifests + download scripts (weights are not committed) |
-| `plugins/` | Example snippets and command packs |
-| `scripts/` | Dev setup, benchmarks, model downloads |
-| `tests/` | Python and Rust tests |
-| `docs/` | Architecture, roadmap, performance, privacy |
+| Путь | Что внутри |
+|------|------------|
+| `apps/desktop/` | Приложение Tauri: интерфейс на React + нативный слой на Rust |
+| `core/openflow-engine/` | Движок на Python: аудио, VAD, STT, очистка |
+| `models/` | Манифесты моделей + скрипты скачивания (веса в git не хранятся) |
+| `plugins/` | Примеры сниппетов и наборов команд |
+| `scripts/` | Настройка dev-окружения, бенчмарки, скачивание моделей |
+| `tests/` | Тесты для Python и Rust |
+| `docs/` | Архитектура, роадмап, производительность, приватность |
 
-## Quick start (engine only, for now)
+## Быстрый старт (пока только движок)
 
 ```powershell
 cd core/openflow-engine
@@ -62,10 +62,10 @@ python -m venv .venv
 .venv\Scripts\python -m openflow_engine --selftest
 ```
 
-## Privacy
+## Приватность
 
-Everything runs locally. No telemetry, no network calls at runtime (model downloads are explicit and one-time). See [docs/PRIVACY.md](docs/PRIVACY.md).
+Всё работает локально. Никакой телеметрии, никаких сетевых вызовов во время работы (модели скачиваются явно и один раз). Подробнее — в [docs/PRIVACY.md](docs/PRIVACY.md).
 
-## License
+## Лицензия
 
 MIT
