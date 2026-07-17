@@ -11,6 +11,8 @@ One JSON object per line (NDJSON). Requests from the shell:
     transform_text    {text, action} -> {text}
     list_devices      {} -> {devices}
     get_config / set_config / reload_user_data
+    download_llm      {} -> {ok, already?}     # recommended Smart LLM, background
+    download_llm_status {} -> {state, pct, path?, error?}   # poll; writes config on done
     shutdown          {} -> {ok}
 
 Errors follow JSON-RPC: {"error": {"code": ..., "message": ...}}.
@@ -28,7 +30,8 @@ from typing import Any, Callable
 
 from . import __version__
 from .audio import Recorder, list_devices
-from .config import Config
+from .config import Config, config_dir
+from .llm_download import LlmDownloader
 from .pipeline import Pipeline
 
 log = logging.getLogger(__name__)
@@ -39,6 +42,7 @@ class IpcServer:
         self.config = config or Config.load()
         self.pipeline = Pipeline(self.config)
         self.recorder: Recorder | None = None
+        self.llm_downloader = LlmDownloader(config_dir() / "models" / "llm")
         self._running = True
         self._handlers: dict[str, Callable[[dict], Any]] = {
             "initialize": self._initialize,
@@ -52,6 +56,8 @@ class IpcServer:
             "get_config": lambda p: self.config.as_dict(),
             "set_config": self._set_config,
             "reload_user_data": self._reload_user_data,
+            "download_llm": lambda p: self.llm_downloader.start(),
+            "download_llm_status": self._download_llm_status,
             "shutdown": self._shutdown,
         }
 
@@ -116,6 +122,19 @@ class IpcServer:
         self.pipeline.snippets.reload()
         self.pipeline.dictionary.reload()
         return {"ok": True}
+
+    def _download_llm_status(self, params: dict) -> dict:
+        status = self.llm_downloader.status()
+        # Finished download becomes usable without a restart: write the path
+        # into config and revive the cleaner. Done here (the IPC thread owns
+        # config), exactly once per download.
+        if status["state"] == "done" and not self.llm_downloader.applied:
+            self.llm_downloader.applied = True
+            self.config.set("llm.model_path", status["path"])
+            self.config.save()
+            self.pipeline.smart.model_path = status["path"]
+            self.pipeline.smart._load_failed = False
+        return status
 
     def _shutdown(self, params: dict) -> dict:
         self._running = False

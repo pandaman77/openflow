@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../stores/app";
 
 const TABS = [
@@ -192,15 +193,88 @@ function ModelsTab() {
           onChange={(v) => setConfig("stt.device", v)}
         />
       </Row>
-      <Row
-        label="LLM для Smart-режима"
-        hint={config.llm.model_path ?? "Не настроена — Smart недоступен"}
-      >
-        <span className={config.llm.model_path ? "text-moss" : "text-coral"}>
-          {config.llm.model_path ? "✓" : "✗"}
-        </span>
-      </Row>
+      <LlmRow />
     </div>
+  );
+}
+
+/** "LLM для Smart-режима": either the configured path, or a one-click
+ * download of the recommended Qwen model with polled progress. */
+function LlmRow() {
+  const { config, loadConfig } = useAppStore();
+  const [dl, setDl] = useState<{ state: string; pct: number; error?: string }>({
+    state: "idle",
+    pct: 0,
+  });
+  const timer = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (timer.current) window.clearInterval(timer.current);
+  }, []);
+
+  const poll = () => {
+    timer.current = window.setInterval(async () => {
+      try {
+        const s = (await invoke("engine_call", {
+          method: "download_llm_status",
+          params: {},
+        })) as { state: string; pct: number; error?: string };
+        setDl(s);
+        if (s.state === "done" || s.state === "error") {
+          if (timer.current) window.clearInterval(timer.current);
+          timer.current = null;
+          if (s.state === "done") await loadConfig();
+        }
+      } catch {
+        /* engine busy (e.g. dictating) — keep polling */
+      }
+    }, 800);
+  };
+
+  const start = async () => {
+    setDl({ state: "downloading", pct: 0 });
+    await invoke("engine_call", { method: "download_llm", params: {} });
+    poll();
+  };
+
+  if (!config) return null;
+
+  if (config.llm.model_path) {
+    return (
+      <Row label="LLM для Smart-режима" hint={config.llm.model_path}>
+        <span className="text-moss">✓</span>
+      </Row>
+    );
+  }
+
+  return (
+    <Row
+      label="LLM для Smart-режима"
+      hint={
+        dl.state === "error"
+          ? `Не скачалось: ${dl.error ?? "ошибка сети"}. Можно повторить или указать GGUF-файл вручную в config.json`
+          : "Нужна для умной очистки текста. Qwen2.5-1.5B, скачается один раз"
+      }
+    >
+      {dl.state === "downloading" ? (
+        <div className="flex items-center gap-2">
+          <div className="h-1.5 w-28 overflow-hidden rounded-full bg-raised">
+            <div
+              className="h-full rounded-full bg-amber transition-all"
+              style={{ width: `${dl.pct}%` }}
+            />
+          </div>
+          <span className="text-xs tabular-nums text-subtext">{Math.floor(dl.pct)}%</span>
+        </div>
+      ) : (
+        <button
+          onClick={() => void start()}
+          className="rounded-lg bg-amber px-3 py-1.5 text-sm font-medium text-base transition-opacity hover:opacity-90"
+        >
+          {dl.state === "error" ? "Повторить" : "Скачать (1.1 ГБ)"}
+        </button>
+      )}
+    </Row>
   );
 }
 
