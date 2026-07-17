@@ -5,9 +5,11 @@
   "windows": ["main", "overlay"],
   "permissions": [
     "core:default",
+    "core:window:allow-set-size",
+    "core:window:allow-set-position",
+    "core:window:allow-current-monitor",
     "global-shortcut:default",
     "clipboard-manager:default",
-    "dialog:default",
-    "updater:default"
+    "dialog:default"
   ]
 }

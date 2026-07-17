@@ -6,8 +6,13 @@
 //! 2. `SendInput` with `KEYEVENTF_UNICODE` as a fallback for apps that
 //!    block synthetic paste (some elevated windows, secure fields).
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread::sleep;
 use std::time::Duration;
+
+/// Bumped on every clipboard-paste insertion; a restore only fires if it's
+/// still the latest, so overlapping dictations don't clobber the clipboard.
+static CLIP_GEN: AtomicU64 = AtomicU64::new(0);
 
 #[cfg(windows)]
 use windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -82,12 +87,17 @@ pub fn insert_text(
             // give the clipboard a beat to settle before the paste keystroke
             sleep(Duration::from_millis(30));
             send_paste();
-            // restore after the target app has consumed the paste
+            // restore after the target app has consumed the paste, but only if
+            // no newer insertion happened meanwhile — otherwise back-to-back
+            // dictations could resurrect a stale clipboard.
             if let Some(prev) = saved {
+                let gen = CLIP_GEN.fetch_add(1, Ordering::SeqCst) + 1;
                 let app = app.clone();
                 std::thread::spawn(move || {
                     sleep(Duration::from_millis(300));
-                    let _ = app.clipboard().write_text(prev);
+                    if CLIP_GEN.load(Ordering::SeqCst) == gen {
+                        let _ = app.clipboard().write_text(prev);
+                    }
                 });
             }
         } else {

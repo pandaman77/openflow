@@ -25,8 +25,8 @@
         "label": "overlay",
         "title": "OpenFlow Overlay",
         "url": "/#/overlay",
-        "width": 460,
-        "height": 72,
+        "width": 132,
+        "height": 26,
         "visible": false,
         "focus": false,
         "decorations": false,
@@ -52,12 +52,6 @@
     "externalBin": ["binaries/openflow-engine"],
     "windows": {
       "wix": { "language": ["en-US", "ru-RU"] }
-    }
-  },
-  "plugins": {
-    "updater": {
-      "endpoints": ["https://github.com/openflow-app/openflow/releases/latest/download/latest.json"],
-      "pubkey": ""
     }
   }
 }

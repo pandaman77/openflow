@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { useAppStore } from "./stores/app";
 import Settings from "./views/Settings";
 import Onboarding from "./views/Onboarding";
@@ -57,6 +59,7 @@ export default function App() {
             <br />
             ничего не уходит в сеть
           </div>
+          <VersionFooter />
         </div>
       </nav>
       <main className="flex-1 overflow-y-auto px-8 py-7">
@@ -86,5 +89,69 @@ function NavButton({
     >
       {children}
     </button>
+  );
+}
+
+type UpdateState =
+  | { status: "idle" }
+  | { status: "checking" }
+  | { status: "current" }
+  | { status: "available"; latest: string; url: string }
+  | { status: "error" };
+
+function VersionFooter() {
+  const [version, setVersion] = useState("");
+  const [update, setUpdate] = useState<UpdateState>({ status: "idle" });
+
+  useEffect(() => {
+    void getVersion().then(setVersion).catch(() => setVersion(""));
+  }, []);
+
+  const check = async () => {
+    setUpdate({ status: "checking" });
+    try {
+      const r = (await invoke("check_update")) as {
+        update_available: boolean;
+        latest: string;
+        url: string;
+      };
+      setUpdate(
+        r.update_available
+          ? { status: "available", latest: r.latest, url: r.url }
+          : { status: "current" },
+      );
+    } catch {
+      setUpdate({ status: "error" });
+    }
+  };
+
+  return (
+    <div className="mt-3 border-t border-line pt-3">
+      <div className="font-mono text-[10px] text-subtext">
+        OpenFlow v{version || "…"}
+      </div>
+      {update.status === "available" ? (
+        <button
+          onClick={() => void invoke("open_url", { url: update.url })}
+          className="mt-1 text-[10px] text-amber hover:underline"
+        >
+          Доступна v{update.latest} — скачать
+        </button>
+      ) : (
+        <button
+          onClick={() => void check()}
+          disabled={update.status === "checking"}
+          className="mt-1 text-[10px] text-subtext hover:text-text disabled:opacity-50"
+        >
+          {update.status === "checking"
+            ? "Проверяю…"
+            : update.status === "current"
+              ? "Актуальная версия ✓"
+              : update.status === "error"
+                ? "Не удалось проверить"
+                : "Проверить обновления"}
+        </button>
+      )}
+    </div>
   );
 }

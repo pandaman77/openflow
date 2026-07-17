@@ -1,25 +1,53 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import {
+  getCurrentWindow,
+  currentMonitor,
+  LogicalSize,
+  LogicalPosition,
+} from "@tauri-apps/api/window";
 
 const BAR_COUNT = 24;
 
 type OverlayState = "idle" | "recording" | "processing";
 
-/** Always-on pill near the taskbar (like Wispr Flow):
- *  idle       — mic icon + «Диктовка Ctrl + Win» hint
- *  recording  — waveform bars + timer
- *  processing — spinner while STT runs
- *  Lives in its own transparent always-on-top window. */
+// The window itself resizes so it only ever occupies its visible pixels —
+// tiny in idle (clicks land on the app behind it), larger when it matters.
+const SIZES = {
+  collapsed: { w: 132, h: 26 },
+  expanded: { w: 300, h: 40 },
+  active: { w: 340, h: 52 },
+};
+
+async function fitWindow(size: { w: number; h: number }) {
+  try {
+    const win = getCurrentWindow();
+    const monitor = await currentMonitor();
+    await win.setSize(new LogicalSize(size.w, size.h));
+    if (monitor) {
+      const scale = monitor.scaleFactor;
+      const screenW = monitor.size.width / scale;
+      const screenH = monitor.size.height / scale;
+      const x = Math.round((screenW - size.w) / 2);
+      const y = Math.round(screenH - size.h - 12);
+      await win.setPosition(new LogicalPosition(x, y));
+    }
+  } catch {
+    /* window API unavailable in dev preview */
+  }
+}
+
 export default function Overlay() {
   const [state, setState] = useState<OverlayState>("idle");
+  const [hovered, setHovered] = useState(false);
   const [levels, setLevels] = useState<number[]>(Array(BAR_COUNT).fill(0.05));
   const [seconds, setSeconds] = useState(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    const unlistenPromises = [
+    const unlisten = [
       listen("dictation:started", () => {
         setState("recording");
         setSeconds(0);
@@ -29,23 +57,27 @@ export default function Overlay() {
       listen("dictation:finished", () => setState("idle")),
       listen("dictation:cancelled", () => setState("idle")),
     ];
-    return () => {
-      unlistenPromises.forEach((p) => p.then((un) => un()));
-    };
+    void fitWindow(SIZES.collapsed);
+    return () => unlisten.forEach((p) => p.then((un) => un()));
   }, []);
+
+  // Resize the OS window to match the current visual state.
+  useEffect(() => {
+    if (state === "recording" || state === "processing") {
+      void fitWindow(SIZES.active);
+    } else {
+      void fitWindow(hovered ? SIZES.expanded : SIZES.collapsed);
+    }
+  }, [state, hovered]);
 
   useEffect(() => {
     if (state === "recording") {
       pollRef.current = setInterval(async () => {
         try {
           const res = (await invoke("get_audio_level")) as { level: number };
-          setLevels((prev) => {
-            const next = prev.slice(1);
-            next.push(Math.min(1, res.level * 6 + 0.05));
-            return next;
-          });
+          setLevels((prev) => [...prev.slice(1), Math.min(1, res.level * 6 + 0.05)]);
         } catch {
-          /* engine busy — keep last frame */
+          /* engine busy */
         }
       }, 66);
       timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
@@ -58,12 +90,23 @@ export default function Overlay() {
 
   const mm = String(Math.floor(seconds / 60));
   const ss = String(seconds % 60).padStart(2, "0");
+  const idleExpanded = state === "idle" && hovered;
 
   return (
-    <div id="overlay-root" className="flex h-screen w-screen items-end justify-center pb-1">
-      {state === "idle" && (
-        <div className="flex items-center gap-2 rounded-full bg-surface/95 px-4 py-2 shadow-xl ring-1 ring-line">
-          <MicIcon className="h-4 w-4 text-subtext" />
+    <div
+      id="overlay-root"
+      className="flex h-screen w-screen items-end justify-center pb-1"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {state === "idle" && !hovered && (
+        // resting sliver — a thin amber bar
+        <div className="mb-1 h-1.5 w-24 rounded-full bg-amber/70 shadow-lg transition-all" />
+      )}
+
+      {idleExpanded && (
+        <div className="flex items-center gap-2 rounded-full bg-surface/95 px-4 py-1.5 shadow-xl ring-1 ring-line">
+          <MicIcon className="h-3.5 w-3.5 text-amber" />
           <span className="text-xs text-subtext">
             Диктовка{" "}
             <kbd className="rounded bg-raised px-1.5 py-0.5 font-mono text-[10px] text-amber">
@@ -74,26 +117,25 @@ export default function Overlay() {
       )}
 
       {state === "recording" && (
-        <div className="flex items-center gap-3 rounded-full bg-surface/95 px-5 py-2.5 shadow-2xl ring-1 ring-amber/40">
-          <div className="h-2.5 w-2.5 animate-pulse rounded-full bg-coral" />
-          <div className="flex h-7 items-end gap-[2px]">
+        <div className="flex items-center gap-3 rounded-full bg-surface/95 px-4 py-1.5 shadow-2xl ring-1 ring-amber/40">
+          <div className="h-2 w-2 animate-pulse rounded-full bg-coral" />
+          <div className="flex h-6 items-end gap-[2px]">
             {levels.map((level, i) => (
               <div
                 key={i}
-                className="w-[4px] rounded-sm bg-amber transition-[height] duration-75"
+                className="w-[3px] rounded-sm bg-amber transition-[height] duration-75"
                 style={{ height: `${Math.max(10, level * 100)}%` }}
               />
             ))}
           </div>
-          <div className="font-mono text-sm tabular-nums text-subtext">
+          <div className="font-mono text-xs tabular-nums text-subtext">
             {mm}:{ss}
           </div>
-          <span className="text-xs text-subtext">Говорите…</span>
         </div>
       )}
 
       {state === "processing" && (
-        <div className="flex items-center gap-2 rounded-full bg-surface/95 px-4 py-2 shadow-xl ring-1 ring-amber/40">
+        <div className="flex items-center gap-2 rounded-full bg-surface/95 px-4 py-1.5 shadow-xl ring-1 ring-amber/40">
           <div className="h-3 w-3 animate-spin rounded-full border-2 border-amber border-t-transparent" />
           <span className="text-xs text-subtext">Обработка…</span>
         </div>

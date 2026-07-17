@@ -102,7 +102,10 @@ impl Engine {
 
     pub fn stop(&self) {
         let _ = self.call("shutdown", json!({}));
+        // Kill outright rather than wait(): a call() during shutdown may have
+        // silently restarted the child, and a stuck engine would never exit.
         if let Some(mut child) = self.child.lock().unwrap().take() {
+            let _ = child.kill();
             let _ = child.wait();
         }
         *self.stdin.lock().unwrap() = None;

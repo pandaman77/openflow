@@ -28,7 +28,6 @@ fn main() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
@@ -73,19 +72,11 @@ fn main() {
                 log::error!("hotkey registration failed: {e}");
             }
 
-            // Overlay pill: bottom-center above the taskbar, always visible,
-            // click-through so it never steals input from the app below.
+            // Overlay: a small always-on sliver at the bottom-center that the
+            // React side resizes/repositions per state. It stays a real (not
+            // click-through) window so it can react to hover, but it's only as
+            // big as its visible pixels — clicks elsewhere hit the app behind.
             if let Some(overlay) = app.get_webview_window("overlay") {
-                if let Ok(Some(monitor)) = overlay.primary_monitor() {
-                    let screen = monitor.size();
-                    let win = overlay
-                        .outer_size()
-                        .unwrap_or(tauri::PhysicalSize::new(460, 72));
-                    let x = (screen.width.saturating_sub(win.width)) as i32 / 2;
-                    let y = screen.height.saturating_sub(win.height + 52) as i32;
-                    let _ = overlay.set_position(tauri::PhysicalPosition::new(x, y));
-                }
-                let _ = overlay.set_ignore_cursor_events(true);
                 let _ = overlay.show();
             }
 
@@ -109,6 +100,8 @@ fn main() {
             commands::get_active_app,
             commands::get_audio_level,
             commands::get_engine_status,
+            commands::check_update,
+            commands::open_url,
             hotkeys::set_hotkeys,
         ])
         .on_window_event(|window, event| {
