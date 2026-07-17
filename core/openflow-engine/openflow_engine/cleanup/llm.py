@@ -79,7 +79,12 @@ class SmartCleaner:
             return False
         try:
             import llama_cpp  # noqa: F401
-        except ImportError:
+        except Exception as exc:
+            # Not just ImportError: a broken install (e.g. a frozen bundle
+            # missing the native DLL) raises OSError here. Whatever the
+            # reason, smart is unavailable — dictation must keep working.
+            self._load_failed = True
+            log.warning("llama_cpp unavailable, smart cleanup disabled: %s", exc)
             return False
         return True
 
