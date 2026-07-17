@@ -39,9 +39,9 @@ fn kill_orphan_engines() {
 #[cfg(not(windows))]
 fn kill_orphan_engines() {}
 
-/// %APPDATA%\OpenFlow\engine.log — the engine's stderr (its logging output).
+/// <data dir>\engine.log — the engine's stderr (its logging output).
 fn engine_log_file() -> Option<File> {
-    let dir = std::path::PathBuf::from(std::env::var_os("APPDATA")?).join("OpenFlow");
+    let dir = crate::paths::data_dir();
     std::fs::create_dir_all(&dir).ok()?;
     File::create(dir.join("engine.log")).ok()
 }
@@ -91,6 +91,16 @@ impl Engine {
         }
         kill_orphan_engines();
         let mut cmd = Self::engine_command();
+        // The shell decides where data lives (portable vs %APPDATA%);
+        // the engine follows via env instead of guessing on its own.
+        let data_dir = crate::paths::data_dir();
+        cmd.env("OPENFLOW_CONFIG_DIR", &data_dir);
+        if crate::paths::is_portable() {
+            // Whisper models download through huggingface_hub, which honors
+            // HF_HOME — point it inside the app folder so the whole install
+            // stays movable. Non-portable installs keep the shared user cache.
+            cmd.env("HF_HOME", data_dir.join("models").join("hf"));
+        }
         // Engine logs go to a file: a GUI parent has no console, so
         // inheriting stderr would hand the child an invalid handle.
         let stderr = engine_log_file()

@@ -6,6 +6,7 @@ mod commands;
 mod hook;
 mod hotkeys;
 mod insertion;
+mod paths;
 mod sidecar;
 mod tray;
 
@@ -16,6 +17,14 @@ use sidecar::Engine;
 
 fn main() {
     init_logging();
+
+    // Portable mode: keep the WebView2 profile (localStorage etc.) inside
+    // the app folder too. Must be set before the first webview is created.
+    if paths::is_portable() {
+        let webview_dir = paths::data_dir().join("webview");
+        let _ = std::fs::create_dir_all(&webview_dir);
+        std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", &webview_dir);
+    }
 
     tauri::Builder::default()
         // Only one OpenFlow at a time — a second launch just reveals the window.
@@ -119,21 +128,18 @@ fn main() {
 }
 
 fn first_run_marker() -> std::path::PathBuf {
-    let appdata = std::env::var("APPDATA").unwrap_or_default();
-    std::path::PathBuf::from(appdata).join("OpenFlow").join(".initialized")
+    paths::data_dir().join(".initialized")
 }
 
-/// Shell logs go to %APPDATA%\OpenFlow\app.log — a GUI process has no
+/// Shell logs go to <data dir>\app.log — a GUI process has no
 /// visible stderr, so without this the logs vanish.
 fn init_logging() {
     let mut builder = env_logger::Builder::from_default_env();
     builder.filter_level(log::LevelFilter::Info);
-    if let Ok(appdata) = std::env::var("APPDATA") {
-        let dir = std::path::PathBuf::from(appdata).join("OpenFlow");
-        let _ = std::fs::create_dir_all(&dir);
-        if let Ok(file) = std::fs::File::create(dir.join("app.log")) {
-            builder.target(env_logger::Target::Pipe(Box::new(file)));
-        }
+    let dir = paths::data_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    if let Ok(file) = std::fs::File::create(dir.join("app.log")) {
+        builder.target(env_logger::Target::Pipe(Box::new(file)));
     }
     builder.init();
 }

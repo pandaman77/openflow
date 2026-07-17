@@ -11,7 +11,9 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use crate::sidecar::Engine;
 
 pub const DEFAULT_PTT: &str = "ctrl+super";
-pub const DEFAULT_TOGGLE: &str = "ctrl+super+space";
+// Not Ctrl+Win+Space: Windows reserves it (input-language switch), so
+// RegisterHotKey always fails with "already registered".
+pub const DEFAULT_TOGGLE: &str = "ctrl+alt+d";
 
 pub fn register_defaults(app: &AppHandle) -> Result<(), String> {
     register_toggle(app, DEFAULT_TOGGLE)

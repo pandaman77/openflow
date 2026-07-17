@@ -58,7 +58,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   config: null,
   devices: [],
   lastResult: null,
-  hotkeys: { ptt: "ctrl+super", toggle: "ctrl+super+space" },
+  hotkeys: { ptt: "ctrl+super", toggle: "ctrl+alt+d" },
 
   init: async () => {
     const markReady = (info: (AppState["engineInfo"] & { devices?: AudioDevice[] }) | null) => {
