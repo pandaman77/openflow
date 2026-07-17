@@ -57,15 +57,18 @@ class LlmDownloader:
     def _run(self, target: Path) -> None:
         part = target.with_suffix(target.suffix + ".part")
         try:
-            import requests
+            # httpx, not requests: it ships with huggingface_hub, so it is
+            # guaranteed present in the frozen bundle. HF resolve-URLs 302
+            # to a CDN — httpx needs follow_redirects explicitly.
+            import httpx
 
             self.target_dir.mkdir(parents=True, exist_ok=True)
-            with requests.get(_URL, stream=True, timeout=60) as resp:
+            with httpx.stream("GET", _URL, timeout=60, follow_redirects=True) as resp:
                 resp.raise_for_status()
                 total = int(resp.headers.get("content-length", 0))
                 done = 0
                 with open(part, "wb") as fh:
-                    for chunk in resp.iter_content(chunk_size=_CHUNK):
+                    for chunk in resp.iter_bytes(chunk_size=_CHUNK):
                         fh.write(chunk)
                         done += len(chunk)
                         if total:

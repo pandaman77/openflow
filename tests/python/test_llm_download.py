@@ -16,7 +16,7 @@ class _FakeResponse:
     def raise_for_status(self):
         pass
 
-    def iter_content(self, chunk_size):
+    def iter_bytes(self, chunk_size):
         for i, chunk in enumerate(self._chunks):
             if self._fail_after is not None and i >= self._fail_after:
                 raise IOError("connection reset")
@@ -29,10 +29,10 @@ class _FakeResponse:
         return False
 
 
-def _install_fake_requests(monkeypatch, response):
-    fake = types.ModuleType("requests")
-    fake.get = lambda url, stream, timeout: response
-    monkeypatch.setitem(sys.modules, "requests", fake)
+def _install_fake_httpx(monkeypatch, response):
+    fake = types.ModuleType("httpx")
+    fake.stream = lambda method, url, timeout, follow_redirects: response
+    monkeypatch.setitem(sys.modules, "httpx", fake)
 
 
 def _wait(dl, timeout=5.0):
@@ -45,7 +45,7 @@ def _wait(dl, timeout=5.0):
 
 
 def test_success_atomic(tmp_path, monkeypatch):
-    _install_fake_requests(monkeypatch, _FakeResponse([b"a" * 10, b"b" * 10]))
+    _install_fake_httpx(monkeypatch, _FakeResponse([b"a" * 10, b"b" * 10]))
     dl = LlmDownloader(tmp_path)
     assert dl.start() == {"ok": True}
     status = _wait(dl)
@@ -57,7 +57,7 @@ def test_success_atomic(tmp_path, monkeypatch):
 
 
 def test_failure_cleans_partial(tmp_path, monkeypatch):
-    _install_fake_requests(monkeypatch, _FakeResponse([b"a" * 10, b"b" * 10], fail_after=1))
+    _install_fake_httpx(monkeypatch, _FakeResponse([b"a" * 10, b"b" * 10], fail_after=1))
     dl = LlmDownloader(tmp_path)
     dl.start()
     status = _wait(dl)
@@ -68,7 +68,7 @@ def test_failure_cleans_partial(tmp_path, monkeypatch):
 
 
 def test_incomplete_body_is_error(tmp_path, monkeypatch):
-    _install_fake_requests(monkeypatch, _FakeResponse([b"a" * 10], total=999))
+    _install_fake_httpx(monkeypatch, _FakeResponse([b"a" * 10], total=999))
     dl = LlmDownloader(tmp_path)
     dl.start()
     assert _wait(dl)["state"] == "error"
