@@ -155,3 +155,29 @@ pub fn install(app: AppHandle, ptt_spec: &str) -> Result<(), String> {
 pub fn install(_app: AppHandle, _ptt_spec: &str) -> Result<(), String> {
     Err("keyboard hook is Windows-only".into())
 }
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::parse_combo;
+
+    #[test]
+    fn parses_ctrl_super() {
+        let c = parse_combo("ctrl+super").unwrap();
+        assert_eq!(c.len(), 2);
+        assert!(c[0].contains(&0xA2)); // either L/R control
+        assert!(c[1].contains(&0x5B)); // either L/R win
+    }
+
+    #[test]
+    fn parses_letters_and_fkeys() {
+        assert!(parse_combo("ctrl+alt+d").is_ok());
+        assert!(parse_combo("f5").is_ok());
+        assert!(parse_combo("shift+space").is_ok());
+    }
+
+    #[test]
+    fn rejects_unknown_and_empty() {
+        assert!(parse_combo("ctrl+wat").is_err());
+        assert!(parse_combo("").is_err());
+    }
+}

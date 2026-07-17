@@ -3,14 +3,25 @@
 //! In dev the engine runs from the repo venv (`OPENFLOW_ENGINE_CMD` env
 //! override); in production it's the bundled PyInstaller binary next to
 //! the app exe (tauri externalBin).
+//!
+//! A background reader thread pumps every stdout line into a channel, so a
+//! call can wait with a timeout: a silently hung engine never freezes the GUI
+//! forever — the call times out and the engine is force-restarted.
 
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::sync::Mutex;
+use std::time::Duration;
 
 use serde_json::{json, Value};
+
+/// Upper bound on any single call. Generous because loading a large model on a
+/// slow CPU can take tens of seconds; this only guards against a *permanent*
+/// hang, not against a slow-but-progressing engine.
+const CALL_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// A hard-killed shell leaves its engine child orphaned; on next launch we
 /// reap any stray engine processes so we don't stack up (and hog the mic).
@@ -38,7 +49,8 @@ fn engine_log_file() -> Option<File> {
 pub struct Engine {
     child: Mutex<Option<Child>>,
     stdin: Mutex<Option<ChildStdin>>,
-    stdout: Mutex<Option<BufReader<ChildStdout>>>,
+    // Every stdout line arrives here, parsed, from the reader thread.
+    responses: Mutex<Option<Receiver<Value>>>,
     // Serializes whole request->response transactions. Without it two
     // concurrent calls can each consume (and discard) the other's reply.
     call_lock: Mutex<()>,
@@ -50,7 +62,7 @@ impl Engine {
         Self {
             child: Mutex::new(None),
             stdin: Mutex::new(None),
-            stdout: Mutex::new(None),
+            responses: Mutex::new(None),
             call_lock: Mutex::new(()),
             next_id: AtomicU64::new(1),
         }
@@ -94,7 +106,32 @@ impl Engine {
         }
         let mut child = cmd.spawn().map_err(|e| format!("engine spawn failed: {e}"))?;
         *self.stdin.lock().unwrap() = child.stdin.take();
-        *self.stdout.lock().unwrap() = child.stdout.take().map(BufReader::new);
+
+        // Reader thread: parse each stdout line and forward it. It ends when the
+        // engine closes stdout (exit/kill), which drops the sender and lets a
+        // waiting call see Disconnected.
+        let (tx, rx) = mpsc::channel::<Value>();
+        if let Some(stdout) = child.stdout.take() {
+            std::thread::spawn(move || {
+                let mut reader = BufReader::new(stdout);
+                loop {
+                    let mut raw = Vec::new();
+                    // read_until + lossy: device names may arrive in the OEM
+                    // code page from older engines — never abort on that.
+                    match reader.read_until(b'\n', &mut raw) {
+                        Ok(0) | Err(_) => break, // EOF or pipe error
+                        Ok(_) => {}
+                    }
+                    let line = String::from_utf8_lossy(&raw);
+                    if let Ok(value) = serde_json::from_str::<Value>(line.trim()) {
+                        if tx.send(value).is_err() {
+                            break; // receiver gone
+                        }
+                    }
+                }
+            });
+        }
+        *self.responses.lock().unwrap() = Some(rx);
         *guard = Some(child);
         log::info!("engine started");
         Ok(())
@@ -109,7 +146,7 @@ impl Engine {
             let _ = child.wait();
         }
         *self.stdin.lock().unwrap() = None;
-        *self.stdout.lock().unwrap() = None;
+        *self.responses.lock().unwrap() = None;
     }
 
     fn restart(&self) -> Result<(), String> {
@@ -119,13 +156,13 @@ impl Engine {
             let _ = child.wait();
         }
         *self.stdin.lock().unwrap() = None;
-        *self.stdout.lock().unwrap() = None;
+        *self.responses.lock().unwrap() = None;
         self.start()
     }
 
-    /// Blocking JSON-RPC call. The engine is single-threaded (one mic, one
-    /// model), and the whole transaction is serialized by call_lock so a
-    /// concurrent caller can never swallow someone else's response line.
+    /// Blocking JSON-RPC call with a hard timeout. The whole transaction is
+    /// serialized by call_lock so a concurrent caller can never swallow
+    /// someone else's response line.
     pub fn call(&self, method: &str, params: Value) -> Result<Value, String> {
         let _transaction = self.call_lock.lock().unwrap();
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
@@ -140,29 +177,31 @@ impl Engine {
             pipe.flush().map_err(|e| e.to_string())?;
         }
 
-        let mut stdout = self.stdout.lock().unwrap();
-        let reader = stdout.as_mut().ok_or("engine not running")?;
+        let deadline = std::time::Instant::now() + CALL_TIMEOUT;
+        let responses = self.responses.lock().unwrap();
+        let rx = responses.as_ref().ok_or("engine not running")?;
         loop {
-            // read_until + lossy conversion: device names may arrive in the
-            // OEM code page from older engines — never abort the call on that.
-            let mut raw = Vec::new();
-            let n = reader.read_until(b'\n', &mut raw).map_err(|e| e.to_string())?;
-            if n == 0 {
-                drop(stdout);
-                self.restart()?;
-                return Err("engine died mid-call (restarted)".into());
-            }
-            let buf = String::from_utf8_lossy(&raw);
-            let value: Value = match serde_json::from_str(buf.trim()) {
-                Ok(v) => v,
-                Err(_) => continue, // stray line on stdout — ignore
-            };
-            // skip notifications; match our request id
-            if value.get("id").and_then(Value::as_u64) == Some(id) {
-                if let Some(err) = value.get("error") {
-                    return Err(err["message"].as_str().unwrap_or("engine error").to_string());
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            match rx.recv_timeout(remaining) {
+                Ok(value) => {
+                    if value.get("id").and_then(Value::as_u64) != Some(id) {
+                        continue; // a notification or a stale reply — skip
+                    }
+                    if let Some(err) = value.get("error") {
+                        return Err(err["message"].as_str().unwrap_or("engine error").to_string());
+                    }
+                    return Ok(value.get("result").cloned().unwrap_or(Value::Null));
                 }
-                return Ok(value.get("result").cloned().unwrap_or(Value::Null));
+                Err(RecvTimeoutError::Timeout) => {
+                    drop(responses);
+                    self.restart()?;
+                    return Err("engine timed out (restarted)".into());
+                }
+                Err(RecvTimeoutError::Disconnected) => {
+                    drop(responses);
+                    self.restart()?;
+                    return Err("engine died mid-call (restarted)".into());
+                }
             }
         }
     }

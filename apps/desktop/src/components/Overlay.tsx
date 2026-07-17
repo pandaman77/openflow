@@ -15,7 +15,7 @@ type OverlayState = "idle" | "recording" | "processing";
 // The window itself resizes so it only ever occupies its visible pixels —
 // tiny in idle (clicks land on the app behind it), larger when it matters.
 const SIZES = {
-  collapsed: { w: 132, h: 26 },
+  collapsed: { w: 72, h: 16 },
   expanded: { w: 300, h: 40 },
   active: { w: 340, h: 52 },
 };
@@ -30,7 +30,8 @@ async function fitWindow(size: { w: number; h: number }) {
       const screenW = monitor.size.width / scale;
       const screenH = monitor.size.height / scale;
       const x = Math.round((screenW - size.w) / 2);
-      const y = Math.round(screenH - size.h - 12);
+      // sit above the taskbar (same level as before), not on top of it
+      const y = Math.round(screenH - size.h - 56);
       await win.setPosition(new LogicalPosition(x, y));
     }
   } catch {
@@ -45,6 +46,17 @@ export default function Overlay() {
   const [seconds, setSeconds] = useState(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const collapseRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Collapse on a short delay so a stray mouse-out doesn't flicker the pill.
+  const onEnter = () => {
+    if (collapseRef.current) clearTimeout(collapseRef.current);
+    setHovered(true);
+  };
+  const onLeave = () => {
+    if (collapseRef.current) clearTimeout(collapseRef.current);
+    collapseRef.current = setTimeout(() => setHovered(false), 260);
+  };
 
   useEffect(() => {
     const unlisten = [
@@ -96,16 +108,21 @@ export default function Overlay() {
     <div
       id="overlay-root"
       className="flex h-screen w-screen items-end justify-center pb-1"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseEnter={onEnter}
+      onMouseLeave={onLeave}
     >
       {state === "idle" && !hovered && (
         // resting sliver — a thin amber bar
-        <div className="mb-1 h-1.5 w-24 rounded-full bg-amber/70 shadow-lg transition-all" />
+        <div className="mb-1 h-1 w-14 rounded-full bg-amber/70 shadow-lg" />
       )}
 
       {idleExpanded && (
-        <div className="flex items-center gap-2 rounded-full bg-surface/95 px-4 py-1.5 shadow-xl ring-1 ring-line">
+        // click opens the main window, like Wispr Flow
+        <button
+          onClick={() => void invoke("open_main")}
+          className="overlay-rise flex cursor-pointer items-center gap-2 rounded-full bg-surface/95 px-4 py-1.5 shadow-xl ring-1 ring-line transition-colors hover:ring-amber/50"
+          title="Открыть OpenFlow"
+        >
           <MicIcon className="h-3.5 w-3.5 text-amber" />
           <span className="text-xs text-subtext">
             Диктовка{" "}
@@ -113,11 +130,11 @@ export default function Overlay() {
               Ctrl + Win
             </kbd>
           </span>
-        </div>
+        </button>
       )}
 
       {state === "recording" && (
-        <div className="flex items-center gap-3 rounded-full bg-surface/95 px-4 py-1.5 shadow-2xl ring-1 ring-amber/40">
+        <div className="overlay-rise flex items-center gap-3 rounded-full bg-surface/95 px-4 py-1.5 shadow-2xl ring-1 ring-amber/40">
           <div className="h-2 w-2 animate-pulse rounded-full bg-coral" />
           <div className="flex h-6 items-end gap-[2px]">
             {levels.map((level, i) => (
@@ -135,7 +152,7 @@ export default function Overlay() {
       )}
 
       {state === "processing" && (
-        <div className="flex items-center gap-2 rounded-full bg-surface/95 px-4 py-1.5 shadow-xl ring-1 ring-amber/40">
+        <div className="overlay-rise flex items-center gap-2 rounded-full bg-surface/95 px-4 py-1.5 shadow-xl ring-1 ring-amber/40">
           <div className="h-3 w-3 animate-spin rounded-full border-2 border-amber border-t-transparent" />
           <span className="text-xs text-subtext">Обработка…</span>
         </div>

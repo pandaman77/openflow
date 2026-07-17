@@ -34,6 +34,28 @@ body:has(#overlay-root) {
   overflow: hidden;
 }
 
+/* overlay pill fades/rises in so it doesn't pop when the window resizes */
+@keyframes overlay-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.overlay-rise {
+  animation: overlay-rise 180ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay-rise {
+    animation: none;
+  }
+}
+
 /* the signature wave: a breathing line that carries engine state */
 @keyframes wave-drift {
   from { transform: translateX(0); }

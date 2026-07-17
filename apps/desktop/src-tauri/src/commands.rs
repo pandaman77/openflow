@@ -102,6 +102,16 @@ pub fn get_active_app() -> Option<String> {
     active_process_name()
 }
 
+/// Bring up the main window — used when the overlay pill is clicked.
+#[tauri::command]
+pub fn open_main(app: AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
+}
+
 /// Ask GitHub for the latest release and compare it to the running version.
 /// Notification-only: we never auto-download, just point the user at the page.
 #[tauri::command]
@@ -166,4 +176,24 @@ fn version_gt(a: &str, b: &str) -> bool {
 #[tauri::command]
 pub fn get_audio_level(engine: State<'_, Engine>) -> Result<Value, String> {
     engine.call("get_level", json!({}))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::version_gt;
+
+    #[test]
+    fn newer_versions_win() {
+        assert!(version_gt("0.2.0", "0.1.0"));
+        assert!(version_gt("1.0.0", "0.9.9"));
+        assert!(version_gt("0.1.1", "0.1.0"));
+    }
+
+    #[test]
+    fn equal_or_older_do_not() {
+        assert!(!version_gt("0.1.0", "0.1.0"));
+        assert!(!version_gt("0.1.0", "0.1")); // trailing zero == missing
+        assert!(!version_gt("0.1.0", "0.2.0"));
+        assert!(!version_gt("0.9.9", "1.0.0"));
+    }
 }

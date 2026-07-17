@@ -102,6 +102,7 @@ fn main() {
             commands::get_engine_status,
             commands::check_update,
             commands::open_url,
+            commands::open_main,
             hotkeys::set_hotkeys,
         ])
         .on_window_event(|window, event| {
