@@ -40,3 +40,6 @@ dist/
 
 # CI added separately (needs workflow-scope token)
 .github/workflows/
+
+# but the handwritten sidecar spec is a build source, keep it
+!openflow-engine-x86_64-pc-windows-msvc.spec
