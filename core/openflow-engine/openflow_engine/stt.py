@@ -41,6 +41,27 @@ def _enable_nvidia_dlls() -> None:
         log.debug("nvidia DLL setup skipped: %s", exc)
 
 
+def _join_segments(texts: list[str]) -> str:
+    """Join whisper segments, restoring dots the model swallowed.
+
+    Segment boundaries are real speech pauses. Small models (especially on
+    Russian) often start the next segment capitalized but leave the previous
+    one without terminal punctuation — "прав доступа Мне кажется". If a
+    segment ends in a letter/digit and the next one starts uppercase, the
+    dot was dropped, so put it back. A sentence merely split mid-flow
+    continues lowercase and is left untouched.
+    """
+    parts = [t.strip() for t in texts]
+    parts = [p for p in parts if p]
+    out = []
+    for i, part in enumerate(parts):
+        nxt = parts[i + 1] if i + 1 < len(parts) else None
+        if nxt and part[-1].isalnum() and nxt[0].isupper():
+            part += "."
+        out.append(part)
+    return " ".join(out).strip()
+
+
 @dataclass
 class TranscriptionResult:
     text: str
@@ -124,7 +145,7 @@ class Transcriber:
             for s in segments_iter
         ]
         inference_s = time.perf_counter() - t0
-        text = " ".join(s["text"].strip() for s in segments).strip()
+        text = _join_segments([s["text"] for s in segments])
         return TranscriptionResult(
             text=text,
             language=info.language,
