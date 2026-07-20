@@ -30,6 +30,19 @@ def detect_script(text: str) -> str:
     return "unknown"
 
 
+def cyrillic_ratio(text: str) -> float:
+    """Share of Cyrillic among all alphabetic (RU+EN) letters, 0..1.
+
+    Returns 0.0 when the text has no RU/EN letters at all. Used to tell a
+    real translation (the dominant script flips) from a few technical terms
+    legitimately kept in the other script ("Открой Cursor" stays ru-dominant).
+    """
+    cyr = len(_CYRILLIC_RE.findall(text))
+    lat = len(_LATIN_RE.findall(text))
+    total = cyr + lat
+    return cyr / total if total else 0.0
+
+
 class LanguageTracker:
     """Remembers recent utterance languages to provide a hint for the next one."""
 

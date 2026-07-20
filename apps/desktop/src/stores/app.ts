@@ -11,6 +11,7 @@ export interface EngineConfig {
     compute_type: string;
     beam_size: number;
     language: string | null;
+    translate: boolean;
   };
   cleanup: { mode: "fast" | "smart" | "literal"; remove_fillers: boolean; profile: string };
   llm: { model_path: string | null; context_size: number; max_tokens: number; temperature: number };

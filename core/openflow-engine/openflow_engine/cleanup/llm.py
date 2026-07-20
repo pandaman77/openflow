@@ -128,11 +128,20 @@ class SmartCleaner:
         if not result or len(result) > max(len(text) * 2, len(text) + 200):
             log.warning("LLM output suspicious (len %d vs %d), keeping input", len(result), len(text))
             return text
-        # Language guard: a small model must never silently translate.
-        from ..language import detect_script
+        # Language guard: a small model must never silently translate. Judge by
+        # the Cyrillic *share*, not mere presence — a real translation flips the
+        # dominant script, while keeping a couple of technical terms in the
+        # other script ("Открой Cursor") leaves the original script dominant.
+        # A "mixed" output that still leans to the source language is fine; one
+        # that has flipped is a partial translation and must fall back.
+        from ..language import cyrillic_ratio, detect_script
 
         script_in, script_out = detect_script(text), detect_script(result)
-        if script_in in ("ru", "en") and script_out not in (script_in, "mixed", "unknown"):
+        drift = (
+            (script_in == "ru" and script_out in ("en", "mixed") and cyrillic_ratio(result) < 0.5)
+            or (script_in == "en" and script_out in ("ru", "mixed") and cyrillic_ratio(result) >= 0.5)
+        )
+        if drift:
             log.warning("LLM changed language %s -> %s, falling back", script_in, script_out)
             raise LanguageDriftError(script_in, script_out)
         return result

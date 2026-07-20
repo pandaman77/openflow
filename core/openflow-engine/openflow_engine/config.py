@@ -30,6 +30,7 @@ DEFAULTS: dict[str, Any] = {
         "compute_type": "auto",  # auto -> int8 on cpu, float16 on cuda
         "beam_size": 1,
         "language": None,        # None = auto-detect per utterance
+        "translate": False,      # True -> Whisper translates any language to English
     },
     "cleanup": {
         "mode": "fast",          # fast|smart|literal

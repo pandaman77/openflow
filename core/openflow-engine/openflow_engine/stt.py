@@ -128,13 +128,20 @@ class Transcriber:
         audio: "np.ndarray | str",
         language: str | None = None,
         initial_prompt: str | None = None,
+        task: str = "transcribe",
     ) -> TranscriptionResult:
-        """audio: float32 mono 16 kHz numpy array, or a path to an audio file."""
+        """audio: float32 mono 16 kHz numpy array, or a path to an audio file.
+
+        task: "transcribe" keeps the spoken language; "translate" uses
+        Whisper's built-in speech translation (any language -> English) in the
+        same pass, no extra model. `language` still names the *source* language.
+        """
         self.load()
         t0 = time.perf_counter()
         segments_iter, info = self._model.transcribe(
             audio,
             language=language,
+            task=task,
             beam_size=self.beam_size,
             initial_prompt=initial_prompt,
             vad_filter=True,

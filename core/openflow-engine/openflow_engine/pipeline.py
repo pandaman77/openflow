@@ -87,18 +87,23 @@ class Pipeline:
         self.transcriber.load()
         return {"reloaded": True, "stt_device": self.transcriber.resolved_device}
 
-    def process_audio(self, audio: np.ndarray, active_app: str | None = None) -> PipelineResult:
+    def process_audio(self, audio: np.ndarray, active_app: str | None = None,
+                      translate: bool | None = None) -> PipelineResult:
         timings: dict[str, float] = {}
         if not has_speech(audio):
             return PipelineResult(type="empty", timings=timings)
 
         t0 = time.perf_counter()
         lang_cfg = self.config.get("stt.language")
+        # translate=None -> use the configured default (Settings toggle);
+        # an explicit bool (from a per-dictation hotkey) overrides it.
+        do_translate = self.config.get("stt.translate") if translate is None else translate
         result = self.transcriber.transcribe(
             audio,
             language=lang_cfg or self.lang_tracker.hint(),
             initial_prompt=self.dictionary.initial_prompt()
             if self.config.get("dictionary.enabled") else None,
+            task="translate" if do_translate else "transcribe",
         )
         timings["stt"] = time.perf_counter() - t0
         self.lang_tracker.observe(result.language, result.language_probability)

@@ -347,6 +347,12 @@ function LanguagesTab() {
           onChange={(v) => setConfig("stt.language", v === "auto" ? null : v)}
         />
       </Row>
+      <Row
+        label="Переводить на английский"
+        hint="Говорите на любом языке — вставляется английский текст. Работает без Smart-режима; для лучшего перевода — модель Large-v3 Turbo."
+      >
+        <Toggle value={config.stt.translate} onChange={(v) => setConfig("stt.translate", v)} />
+      </Row>
     </div>
   );
 }
