@@ -85,9 +85,8 @@ fn main() {
             // React side resizes/repositions per state. It stays a real (not
             // click-through) window so it can react to hover, but it's only as
             // big as its visible pixels — clicks elsewhere hit the app behind.
-            if let Some(overlay) = app.get_webview_window("overlay") {
-                let _ = overlay.show();
-            }
+            // It starts hidden (visible:false) and the React side shows it only
+            // AFTER sizing+positioning, so it never flashes at the default spot.
 
             // First run: show the main window (onboarding); otherwise stay in tray.
             let first_run = !crate::first_run_marker().exists();
@@ -112,6 +111,7 @@ fn main() {
             commands::check_update,
             commands::open_url,
             commands::open_main,
+            commands::fit_overlay,
             hotkeys::set_hotkeys,
         ])
         .on_window_event(|window, event| {

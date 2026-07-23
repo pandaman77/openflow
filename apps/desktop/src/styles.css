@@ -50,9 +50,26 @@ body:has(#overlay-root) {
   animation: overlay-rise 180ms ease-out;
 }
 
+/* the menu grows out of the kebab dot: scale + fade from the bottom-right */
+.overlay-menu {
+  transform-origin: bottom center;
+  transform: scale(0.35) translateY(12px);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 200ms cubic-bezier(0.2, 0.9, 0.3, 1.2), opacity 160ms ease;
+}
+.overlay-menu.open {
+  transform: none;
+  opacity: 1;
+  pointer-events: auto;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .overlay-rise {
     animation: none;
+  }
+  .overlay-menu {
+    transition: opacity 160ms ease;
   }
 }
 

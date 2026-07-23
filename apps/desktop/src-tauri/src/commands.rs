@@ -178,6 +178,48 @@ pub fn get_audio_level(engine: State<'_, Engine>) -> Result<Value, String> {
     engine.call("get_level", json!({}))
 }
 
+/// Move + resize the overlay to its bottom-center spot in ONE native call.
+/// Two separate setSize/setPosition IPC calls let Windows paint the window at
+/// an intermediate rect (old position, new size) — a visible stretched flash
+/// on every hover expand/collapse.
+#[tauri::command]
+pub fn fit_overlay(app: AppHandle, w: f64, h: f64) -> Result<(), String> {
+    let overlay = app
+        .get_webview_window("overlay")
+        .ok_or("overlay window missing")?;
+    let monitor = overlay
+        .current_monitor()
+        .map_err(|e| e.to_string())?
+        .ok_or("no monitor")?;
+    let scale = monitor.scale_factor();
+    let msize = monitor.size();
+    let mpos = monitor.position();
+    let pw = (w * scale).round() as i32;
+    let ph = (h * scale).round() as i32;
+    let x = mpos.x + (msize.width as i32 - pw) / 2;
+    // sit above the taskbar (same 56px gap the JS math used)
+    let y = mpos.y + msize.height as i32 - ph - (56.0 * scale).round() as i32;
+
+    #[cfg(windows)]
+    {
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            SetWindowPos, SWP_NOACTIVATE, SWP_NOZORDER,
+        };
+        let raw = overlay.hwnd().map_err(|e| e.to_string())?.0 as isize;
+        unsafe {
+            SetWindowPos(HWND(raw as _), HWND::default(), x, y, pw, ph, SWP_NOZORDER | SWP_NOACTIVATE)
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = overlay.set_size(tauri::PhysicalSize::new(pw.max(1) as u32, ph.max(1) as u32));
+        let _ = overlay.set_position(tauri::PhysicalPosition::new(x, y));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::version_gt;
