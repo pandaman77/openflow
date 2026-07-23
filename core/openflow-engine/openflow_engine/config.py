@@ -25,12 +25,13 @@ DEFAULTS: dict[str, Any] = {
         "min_silence_ms": 300,
     },
     "stt": {
-        "model": "small",        # tiny|base|small|medium|large-v3|large-v3-turbo
-        "device": "auto",        # auto|cpu|cuda
-        "compute_type": "auto",  # auto -> int8 on cpu, float16 on cuda
+        "engine": "parakeet",    # parakeet|gigaam|faster-whisper (parakeet: RU+EN, fast)
+        "model": "small",        # faster-whisper only: tiny|base|small|medium|large-v3|large-v3-turbo
+        "device": "auto",        # faster-whisper only: auto|cpu|cuda
+        "compute_type": "auto",  # faster-whisper only: auto -> int8 on cpu, float16 on cuda
         "beam_size": 1,
         "language": None,        # None = auto-detect per utterance
-        "translate": False,      # True -> Whisper translates any language to English
+        "translate": False,      # True -> translate to English (forces faster-whisper)
     },
     "cleanup": {
         "mode": "fast",          # fast|smart|literal

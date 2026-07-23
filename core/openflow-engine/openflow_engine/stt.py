@@ -72,6 +72,14 @@ class TranscriptionResult:
     segments: list[dict] = field(default_factory=list)
 
 
+# onnx-asr engine ids -> the model each one loads from HuggingFace.
+# Both variants ship punctuation and capitalization; e2e-ctc is the fastest.
+ONNX_MODELS: dict[str, str] = {
+    "gigaam": "gigaam-v3-e2e-ctc",          # Russian only, fastest on CPU
+    "parakeet": "nemo-parakeet-tdt-0.6b-v3",  # RU+EN (25 langs), auto-detect
+}
+
+
 class Transcriber:
     def __init__(
         self,
@@ -160,4 +168,65 @@ class Transcriber:
             duration_s=info.duration,
             inference_s=inference_s,
             segments=segments,
+        )
+
+
+class OnnxTranscriber:
+    """STT via onnx-asr (GigaAM / Parakeet) — fast CPU ONNX models.
+
+    Deliberately mirrors Transcriber's interface (load / transcribe ->
+    TranscriptionResult) so the pipeline can swap engines freely. These models
+    are several times faster than Whisper on CPU and already output punctuation
+    and capitalization. They do NOT translate: the pipeline routes a translate
+    request to Whisper instead.
+    """
+
+    def __init__(self, engine: str):
+        if engine not in ONNX_MODELS:
+            raise ValueError(f"unknown onnx engine {engine!r}")
+        self.engine = engine
+        self.model_name = ONNX_MODELS[engine]
+        self._model = None
+        self.resolved_device: str | None = None
+
+    def load(self) -> None:
+        if self._model is not None:
+            return
+        import onnx_asr
+
+        t0 = time.perf_counter()
+        # First load downloads the ONNX weights from HuggingFace and caches them.
+        self._model = onnx_asr.load_model(self.model_name)
+        self.resolved_device = "cpu"
+        log.info("Loaded onnx-asr '%s' (%s) in %.1fs",
+                 self.model_name, self.engine, time.perf_counter() - t0)
+
+    def transcribe(
+        self,
+        audio: "np.ndarray | str",
+        language: str | None = None,
+        initial_prompt: str | None = None,
+        task: str = "transcribe",
+    ) -> TranscriptionResult:
+        if task == "translate":
+            # Only Whisper can translate; the pipeline must not route here.
+            raise NotImplementedError(f"onnx engine {self.engine!r} cannot translate")
+        self.load()
+        t0 = time.perf_counter()
+        result = self._model.recognize(audio, sample_rate=16000)
+        inference_s = time.perf_counter() - t0
+        text = (result if isinstance(result, str) else getattr(result, "text", str(result))).strip()
+
+        from .language import detect_script
+
+        detected = detect_script(text)
+        lang = detected if detected in ("ru", "en") else (language or "ru")
+        duration_s = len(audio) / 16000 if hasattr(audio, "__len__") else 0.0
+        return TranscriptionResult(
+            text=text,
+            language=lang,
+            language_probability=1.0,
+            duration_s=duration_s,
+            inference_s=inference_s,
+            segments=[],
         )

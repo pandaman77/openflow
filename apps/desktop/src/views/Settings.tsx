@@ -101,6 +101,30 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
   );
 }
 
+/** A short explanatory blurb under a selector so it's clear what a mode does. */
+function InfoHint({ text }: { text: string }) {
+  return (
+    <div className="rounded-lg border border-line bg-surface px-4 py-3 text-xs leading-relaxed text-subtext">
+      {text}
+    </div>
+  );
+}
+
+const ENGINE_HINTS: Record<string, string> = {
+  parakeet:
+    "Быстрый офлайн-движок. Русский и английский, язык определяется автоматически. В несколько раз быстрее Whisper на процессоре. Рекомендуется.",
+  gigaam:
+    "Самый быстрый на процессоре, заточен под русский. Английские слова не распознаёт — для смешанной речи выбери Parakeet или Whisper.",
+  "faster-whisper":
+    "Классический Whisper: медленнее, но самый универсальный. Много языков и единственный, кто умеет перевод на английский. Ниже выбери размер модели.",
+};
+
+const CLEANUP_HINTS: Record<string, string> = {
+  fast: "Быстрая очистка по правилам: убирает слова-паразиты, ставит точки и заглавные. Мгновенно, без нейросети.",
+  smart: "Умная очистка локальной нейросетью (Qwen): аккуратнее с пунктуацией и формулировками. Медленнее, нужна скачанная модель.",
+  literal: "Без обработки — вставляет ровно как распознано.",
+};
+
 /* ---------- tabs ---------- */
 
 function GeneralTab() {
@@ -108,17 +132,18 @@ function GeneralTab() {
   if (!config) return <Loading />;
   return (
     <div className="space-y-2">
-      <Row label="Режим очистки" hint="Fast — правила, мгновенно. Smart — локальный LLM.">
+      <Row label="Режим очистки" hint="Как обрабатывать распознанный текст перед вставкой">
         <Select
           value={config.cleanup.mode}
           options={[
-            { value: "fast", label: "Fast" },
-            { value: "smart", label: "Smart" },
-            { value: "literal", label: "Literal (как сказано)" },
+            { value: "fast", label: "Fast — правила" },
+            { value: "smart", label: "Smart — нейросеть" },
+            { value: "literal", label: "Literal — как сказано" },
           ]}
           onChange={(v) => setConfig("cleanup.mode", v)}
         />
       </Row>
+      <InfoHint text={CLEANUP_HINTS[config.cleanup.mode] ?? ""} />
       <Row label="Убирать слова-паразиты" hint="эм, ну вот, um, uh…">
         <Toggle
           value={config.cleanup.remove_fillers}
@@ -166,33 +191,51 @@ function AudioTab() {
 function ModelsTab() {
   const { config, setConfig, engineInfo } = useAppStore();
   if (!config) return <Loading />;
+  const isWhisper = config.stt.engine === "faster-whisper";
   return (
     <div className="space-y-2">
-      <Row label="Модель распознавания" hint="Меньше — быстрее, больше — точнее">
+      <Row label="Движок распознавания" hint="Чем распознавать речь. Влияет на скорость и языки">
         <Select
-          value={config.stt.model}
+          value={config.stt.engine}
           options={[
-            { value: "tiny", label: "Tiny (75 МБ)" },
-            { value: "base", label: "Base (145 МБ)" },
-            { value: "small", label: "Small (484 МБ)" },
-            { value: "medium", label: "Medium (1.5 ГБ)" },
-            { value: "large-v3-turbo", label: "Large-v3 Turbo (1.6 ГБ, GPU)" },
-            { value: "large-v3", label: "Large-v3 (3 ГБ, GPU)" },
+            { value: "parakeet", label: "Parakeet — быстрый, RU+EN" },
+            { value: "gigaam", label: "GigaAM — самый быстрый, RU" },
+            { value: "faster-whisper", label: "Whisper — точный, все языки" },
           ]}
-          onChange={(v) => setConfig("stt.model", v)}
+          onChange={(v) => setConfig("stt.engine", v)}
         />
       </Row>
-      <Row label="Устройство" hint={`Сейчас: ${engineInfo?.stt_device ?? "?"}`}>
-        <Select
-          value={config.stt.device}
-          options={[
-            { value: "auto", label: "Авто (CUDA → CPU)" },
-            { value: "cuda", label: "CUDA (GPU)" },
-            { value: "cpu", label: "CPU" },
-          ]}
-          onChange={(v) => setConfig("stt.device", v)}
-        />
-      </Row>
+      <InfoHint text={ENGINE_HINTS[config.stt.engine] ?? ""} />
+
+      {isWhisper && (
+        <>
+          <Row label="Модель Whisper" hint="Меньше — быстрее, больше — точнее">
+            <Select
+              value={config.stt.model}
+              options={[
+                { value: "tiny", label: "Tiny (75 МБ)" },
+                { value: "base", label: "Base (145 МБ)" },
+                { value: "small", label: "Small (484 МБ)" },
+                { value: "medium", label: "Medium (1.5 ГБ)" },
+                { value: "large-v3-turbo", label: "Large-v3 Turbo (1.6 ГБ, GPU)" },
+                { value: "large-v3", label: "Large-v3 (3 ГБ, GPU)" },
+              ]}
+              onChange={(v) => setConfig("stt.model", v)}
+            />
+          </Row>
+          <Row label="Устройство" hint={`Сейчас: ${engineInfo?.stt_device ?? "?"}`}>
+            <Select
+              value={config.stt.device}
+              options={[
+                { value: "auto", label: "Авто (CUDA → CPU)" },
+                { value: "cuda", label: "CUDA (GPU)" },
+                { value: "cpu", label: "CPU" },
+              ]}
+              onChange={(v) => setConfig("stt.device", v)}
+            />
+          </Row>
+        </>
+      )}
       <LlmRow />
     </div>
   );
@@ -349,7 +392,7 @@ function LanguagesTab() {
       </Row>
       <Row
         label="Переводить на английский"
-        hint="Говорите на любом языке — вставляется английский текст. Работает без Smart-режима; для лучшего перевода — модель Large-v3 Turbo."
+        hint="Говорите на любом языке — вставляется английский текст. Перевод делает Whisper, поэтому при включении используется он (Parakeet и GigaAM не переводят)."
       >
         <Toggle value={config.stt.translate} onChange={(v) => setConfig("stt.translate", v)} />
       </Row>

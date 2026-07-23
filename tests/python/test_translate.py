@@ -12,7 +12,7 @@ from openflow_engine.cleanup.llm import LanguageDriftError, SmartCleaner
 from openflow_engine.config import Config
 from openflow_engine.language import cyrillic_ratio
 from openflow_engine.pipeline import Pipeline
-from openflow_engine.stt import TranscriptionResult
+from openflow_engine.stt import Transcriber, TranscriptionResult
 
 
 # ---------- cyrillic_ratio ----------
@@ -75,8 +75,9 @@ class TestLanguageGuard:
 
 # ---------- task wiring: config/flag -> whisper ----------
 
-class _CapturingTranscriber:
-    """Stands in for Transcriber: records the `task` it was called with."""
+class _CapturingTranscriber(Transcriber):
+    """Records the `task` it was called with. Subclasses Transcriber so the
+    translate path (which routes to a Whisper instance) still lands here."""
 
     def __init__(self):
         self.calls: list[str] = []

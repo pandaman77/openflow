@@ -28,7 +28,7 @@ from .cleanup.rules import fast_cleanup, literal_cleanup
 from .dictionary import PersonalDictionary
 from .language import LanguageTracker
 from .snippets import SnippetStore
-from .stt import Transcriber
+from .stt import ONNX_MODELS, OnnxTranscriber, Transcriber
 from .vad import has_speech
 
 log = logging.getLogger(__name__)
@@ -48,6 +48,8 @@ class Pipeline:
     def __init__(self, config: Config):
         self.config = config
         self.transcriber = self._build_transcriber()
+        self._translate_whisper: Transcriber | None = None
+        self._stt_sig = self._stt_signature()
         self.snippets = SnippetStore()
         self.commands = CommandDetector()
         self.dictionary = PersonalDictionary()
@@ -59,7 +61,15 @@ class Pipeline:
             temperature=config.get("llm.temperature"),
         )
 
-    def _build_transcriber(self) -> Transcriber:
+    def _stt_signature(self) -> tuple:
+        return (self.config.get("stt.engine"), self.config.get("stt.model"),
+                self.config.get("stt.device"), self.config.get("stt.compute_type"),
+                self.config.get("stt.beam_size"))
+
+    def _build_transcriber(self):
+        engine = self.config.get("stt.engine")
+        if engine in ONNX_MODELS:
+            return OnnxTranscriber(engine)
         return Transcriber(
             model_name=self.config.get("stt.model"),
             device=self.config.get("stt.device"),
@@ -67,24 +77,40 @@ class Pipeline:
             beam_size=self.config.get("stt.beam_size"),
         )
 
+    def _whisper_for_translate(self) -> Transcriber:
+        """Translation needs Whisper (onnx engines can't translate). Reuse the
+        main transcriber if it's already Whisper, else build one lazily."""
+        if isinstance(self.transcriber, Transcriber):
+            return self.transcriber
+        if self._translate_whisper is None:
+            log.info("building lazy Whisper for translation (main engine is %s)",
+                     self.config.get("stt.engine"))
+            self._translate_whisper = Transcriber(
+                model_name=self.config.get("stt.model"),
+                device=self.config.get("stt.device"),
+                compute_type=self.config.get("stt.compute_type"),
+                beam_size=self.config.get("stt.beam_size"),
+            )
+        return self._translate_whisper
+
     def warmup(self) -> dict[str, Any]:
         """Load the STT model up-front so the first dictation isn't slow."""
         self.transcriber.load()
         return {"stt_device": self.transcriber.resolved_device,
+                "stt_engine": self.config.get("stt.engine"),
                 "smart_available": self.smart.available()}
 
     def reload_stt(self) -> dict[str, Any]:
-        """Swap in a fresh transcriber after the model/device config changed.
-        The old model was resident; without this a model switch has no effect."""
-        old = (self.transcriber.model_name, self.transcriber.device,
-               self.transcriber.compute_type, self.transcriber.beam_size)
-        new = (self.config.get("stt.model"), self.config.get("stt.device"),
-               self.config.get("stt.compute_type"), self.config.get("stt.beam_size"))
-        if old == new:
+        """Swap in a fresh transcriber after the STT engine/model config changed.
+        The old model was resident; without this a switch has no effect."""
+        new_sig = self._stt_signature()
+        if new_sig == self._stt_sig:
             return {"reloaded": False}
-        log.info("stt config changed %s -> %s, reloading", old, new)
+        log.info("stt config changed %s -> %s, reloading", self._stt_sig, new_sig)
+        self._stt_sig = new_sig
         self.transcriber = self._build_transcriber()
         self.transcriber.load()
+        self._translate_whisper = None  # engine may have changed; drop cached one
         return {"reloaded": True, "stt_device": self.transcriber.resolved_device}
 
     def process_audio(self, audio: np.ndarray, active_app: str | None = None,
@@ -98,7 +124,10 @@ class Pipeline:
         # translate=None -> use the configured default (Settings toggle);
         # an explicit bool (from a per-dictation hotkey) overrides it.
         do_translate = self.config.get("stt.translate") if translate is None else translate
-        result = self.transcriber.transcribe(
+        # Only Whisper can translate; route a translate request to it regardless
+        # of the selected fast engine. Plain dictation uses the chosen engine.
+        transcriber = self._whisper_for_translate() if do_translate else self.transcriber
+        result = transcriber.transcribe(
             audio,
             language=lang_cfg or self.lang_tracker.hint(),
             initial_prompt=self.dictionary.initial_prompt()

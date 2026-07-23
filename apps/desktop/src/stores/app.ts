@@ -6,6 +6,7 @@ export interface EngineConfig {
   audio: { device: number | null; sample_rate: number; channels: number };
   vad: { enabled: boolean; threshold: number; min_silence_ms: number };
   stt: {
+    engine: string;
     model: string;
     device: string;
     compute_type: string;
@@ -37,7 +38,7 @@ export interface DictationResult {
 interface AppState {
   engineReady: boolean;
   engineError: string | null;
-  engineInfo: { stt_device?: string; smart_available?: boolean } | null;
+  engineInfo: { stt_device?: string; stt_engine?: string; smart_available?: boolean } | null;
   recording: boolean;
   config: EngineConfig | null;
   devices: AudioDevice[];

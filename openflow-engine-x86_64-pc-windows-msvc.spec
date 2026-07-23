@@ -12,6 +12,12 @@ datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 # invisible to PyInstaller's import analysis, so collect the whole package.
 tmp_ret = collect_all('llama_cpp')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+# Fast ONNX engines (GigaAM / Parakeet via onnx-asr). onnxruntime ships native
+# DLLs and provider plugins that import analysis misses — collect both wholesale.
+tmp_ret = collect_all('onnx_asr')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('onnxruntime')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 
 a = Analysis(

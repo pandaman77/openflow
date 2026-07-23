@@ -1,6 +1,6 @@
 [package]
 name = "openflow"
-version = "0.1.4"
+version = "0.2.0"
 description = "OpenFlow — local-first voice dictation for Windows"
 license = "MIT"
 edition = "2021"
