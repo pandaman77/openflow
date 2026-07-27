@@ -18,6 +18,16 @@ use sidecar::Engine;
 fn main() {
     init_logging();
 
+    // Chromium stops painting a window it believes is covered, and it gets that
+    // wrong for a 72x16 transparent sliver: after sleep or a lock screen the
+    // overlay's webview goes dark for good. No frames means no rAF, which
+    // strands the React resize chain and leaves the pill invisible while the
+    // app itself keeps working. Turning the check off keeps the overlay alive.
+    std::env::set_var(
+        "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+        "--disable-features=CalculateNativeWinOcclusion",
+    );
+
     // Portable mode: keep the WebView2 profile (localStorage etc.) inside
     // the app folder too. Must be set before the first webview is created.
     if paths::is_portable() {

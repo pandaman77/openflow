@@ -203,12 +203,14 @@ pub fn fit_overlay(app: AppHandle, w: f64, h: f64) -> Result<(), String> {
     #[cfg(windows)]
     {
         use windows::Win32::Foundation::HWND;
-        use windows::Win32::UI::WindowsAndMessaging::{
-            SetWindowPos, SWP_NOACTIVATE, SWP_NOZORDER,
-        };
+        use windows::Win32::UI::WindowsAndMessaging::{SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE};
         let raw = overlay.hwnd().map_err(|e| e.to_string())?.0 as isize;
         unsafe {
-            SetWindowPos(HWND(raw as _), HWND::default(), x, y, pw, ph, SWP_NOZORDER | SWP_NOACTIVATE)
+            // HWND_TOPMOST, not NOZORDER: the pill must stay above everything.
+            // The always-on-top flag alone only puts it in the topmost band —
+            // another topmost window can still cover it, and it never climbs
+            // back. Re-asserting the position on every fit keeps it on top.
+            SetWindowPos(HWND(raw as _), HWND_TOPMOST, x, y, pw, ph, SWP_NOACTIVATE)
                 .map_err(|e| e.to_string())?;
         }
     }

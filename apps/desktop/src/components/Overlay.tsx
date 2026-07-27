@@ -36,8 +36,20 @@ async function fitWindow(size: { w: number; h: number }) {
 }
 
 // Two rAFs guarantee the frame we just rendered actually reached the screen.
+// The timeout is the escape hatch: when Windows decides the overlay isn't
+// visible (occlusion tracking, sleep, lock screen) the webview stops painting
+// and rAF never fires again. Without it the resize chain below would hang
+// forever, leaving the overlay blank and frozen at its last size.
 const nextPaint = () =>
-  new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+  new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, 120);
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        clearTimeout(timer);
+        resolve();
+      }),
+    );
+  });
 
 export default function Overlay() {
   const [state, setState] = useState<OverlayState>("idle");
