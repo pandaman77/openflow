@@ -55,6 +55,8 @@ pub struct Engine {
     // concurrent calls can each consume (and discard) the other's reply.
     call_lock: Mutex<()>,
     next_id: AtomicU64,
+    // Set once the app is up, so engine notifications can reach the UI.
+    app: Mutex<Option<tauri::AppHandle>>,
 }
 
 impl Engine {
@@ -65,6 +67,20 @@ impl Engine {
             responses: Mutex::new(None),
             call_lock: Mutex::new(()),
             next_id: AtomicU64::new(1),
+            app: Mutex::new(None),
+        }
+    }
+
+    /// Hand the engine a way to reach the UI. Called during setup, before the
+    /// first call: without it progress notifications are simply dropped.
+    pub fn set_app(&self, app: tauri::AppHandle) {
+        *self.app.lock().unwrap() = Some(app);
+    }
+
+    fn forward_notification(&self, params: Option<Value>) {
+        if let Some(app) = self.app.lock().unwrap().as_ref() {
+            use tauri::Emitter;
+            let _ = app.emit("engine:progress", params.unwrap_or(Value::Null));
         }
     }
 
@@ -187,7 +203,7 @@ impl Engine {
             pipe.flush().map_err(|e| e.to_string())?;
         }
 
-        let deadline = std::time::Instant::now() + CALL_TIMEOUT;
+        let mut deadline = std::time::Instant::now() + CALL_TIMEOUT;
         let responses = self.responses.lock().unwrap();
         let rx = responses.as_ref().ok_or("engine not running")?;
         loop {
@@ -195,6 +211,16 @@ impl Engine {
             match rx.recv_timeout(remaining) {
                 Ok(value) => {
                     if value.get("id").and_then(Value::as_u64) != Some(id) {
+                        // A notification (no id) means the engine is busy with
+                        // something long, like the first-launch model download.
+                        // Pass it to the UI and extend the deadline: the timeout
+                        // is here to catch a *silent* engine, and this one is
+                        // talking. Without this, downloading gigabytes always
+                        // looked like a hang and got killed at 120s.
+                        if value.get("method").is_some() {
+                            self.forward_notification(value.get("params").cloned());
+                            deadline = std::time::Instant::now() + CALL_TIMEOUT;
+                        }
                         continue; // a notification or a stale reply — skip
                     }
                     if let Some(err) = value.get("error") {

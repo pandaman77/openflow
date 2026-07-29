@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { check, type Update } from "@tauri-apps/plugin-updater";
 
 export interface EngineConfig {
   audio: { device: number | null; sample_rate: number; channels: number };
@@ -35,10 +36,25 @@ export interface DictationResult {
   timings?: Record<string, number>;
 }
 
+/// Progress of the one-time model download, pushed by the engine while it
+/// loads. `downloaded`/`total` are absent for models whose size we can't tell;
+/// the ticks still arrive, so the UI can say "working" instead of going quiet.
+export interface ModelProgress {
+  engine: string;
+  downloaded?: number;
+  total?: number;
+  done: boolean;
+}
+
 interface AppState {
   engineReady: boolean;
   engineError: string | null;
   engineInfo: { stt_device?: string; stt_engine?: string; smart_available?: boolean } | null;
+  modelProgress: ModelProgress | null;
+  /// Pending release, found at startup or by the button in the sidebar. Kept
+  /// here so both places agree on what is available and what was dismissed.
+  update: Update | null;
+  updateDismissed: boolean;
   recording: boolean;
   config: EngineConfig | null;
   devices: AudioDevice[];
@@ -46,6 +62,8 @@ interface AppState {
   hotkeys: { ptt: string; toggle: string };
 
   init: () => Promise<void>;
+  checkUpdate: () => Promise<"available" | "current" | "error">;
+  dismissUpdate: () => void;
   loadConfig: () => Promise<void>;
   setConfig: (key: string, value: unknown) => Promise<void>;
   setHotkeys: (ptt: string, toggle: string) => Promise<void>;
@@ -56,6 +74,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   engineReady: false,
   engineError: null,
   engineInfo: null,
+  modelProgress: null,
+  update: null,
+  updateDismissed: false,
   recording: false,
   config: null,
   devices: [],
@@ -69,6 +90,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         engineReady: true,
         engineError: null,
         engineInfo: info,
+        modelProgress: null,
         devices: info?.devices ?? get().devices,
       });
       void get().loadConfig();
@@ -98,12 +120,31 @@ export const useAppStore = create<AppState>((set, get) => ({
       markReady(event.payload as AppState["engineInfo"] & { devices?: AudioDevice[] }),
     );
     void listen("engine:error", (event) => set({ engineError: String(event.payload) }));
+    void listen("engine:progress", (event) =>
+      set({ modelProgress: event.payload as ModelProgress }),
+    );
     void listen("dictation:started", () => set({ recording: true }));
     void listen("dictation:finished", (event) =>
       set({ recording: false, lastResult: event.payload as DictationResult }),
     );
     void listen("dictation:cancelled", () => set({ recording: false }));
+
+    // Look for a new release on every launch. Silent when there's nothing to
+    // install, offline, or when no manifest is published yet.
+    void get().checkUpdate();
   },
+
+  checkUpdate: async () => {
+    try {
+      const found = await check();
+      set({ update: found, updateDismissed: false });
+      return found ? "available" : "current";
+    } catch {
+      return "error";
+    }
+  },
+
+  dismissUpdate: () => set({ updateDismissed: true }),
 
   loadConfig: async () => {
     const config = (await invoke("engine_call", {

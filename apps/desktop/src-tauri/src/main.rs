@@ -47,6 +47,10 @@ fn main() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
+        // Update check + install, signed with our key (see tauri.conf.json).
+        // process is what lets the app restart itself once the installer ran.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
@@ -60,6 +64,9 @@ fn main() {
 
             // Engine start + model warm-up off the main thread: the tray must
             // appear instantly even while whisper loads.
+            // The engine needs a handle of its own to push download progress
+            // to the UI, and it must have it before the first call.
+            app.state::<Engine>().set_app(handle.clone());
             let engine_handle = handle.clone();
             std::thread::spawn(move || {
                 let engine = engine_handle.state::<Engine>();
@@ -68,18 +75,28 @@ fn main() {
                     return;
                 }
                 use tauri::Emitter;
-                match engine.call("initialize", json!({})) {
-                    Ok(info) => {
-                        log::info!("engine ready: {info}");
-                        // store first (the UI polls this), then notify live windows
-                        engine_handle.state::<commands::EngineStatus>().set(info.clone());
-                        let _ = engine_handle.emit("engine:ready", info);
-                    }
-                    Err(e) => {
-                        log::error!("engine initialize failed: {e}");
-                        let _ = engine_handle.emit("engine:error", e);
+                // A fresh install downloads gigabytes of model weights here.
+                // If that dies half-way, huggingface resumes from what it
+                // already has, so another attempt usually finishes the job —
+                // far better than leaving a new user staring at an error.
+                const ATTEMPTS: u32 = 3;
+                let mut last_error = String::from("engine did not start");
+                for attempt in 1..=ATTEMPTS {
+                    match engine.call("initialize", json!({})) {
+                        Ok(info) => {
+                            log::info!("engine ready: {info}");
+                            // store first (the UI polls this), then notify live windows
+                            engine_handle.state::<commands::EngineStatus>().set(info.clone());
+                            let _ = engine_handle.emit("engine:ready", info);
+                            return;
+                        }
+                        Err(e) => {
+                            log::error!("engine initialize failed ({attempt}/{ATTEMPTS}): {e}");
+                            last_error = e;
+                        }
                     }
                 }
+                let _ = engine_handle.emit("engine:error", last_error);
             });
 
             // PTT rides a low-level keyboard hook (supports modifier-only
@@ -118,10 +135,11 @@ fn main() {
             commands::get_active_app,
             commands::get_audio_level,
             commands::get_engine_status,
-            commands::check_update,
             commands::open_url,
             commands::open_main,
             commands::fit_overlay,
+            commands::cursor_over_overlay,
+            commands::is_portable,
             hotkeys::set_hotkeys,
         ])
         .on_window_event(|window, event| {

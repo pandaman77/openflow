@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/main.tsx","./src/components/overlay.tsx","./src/components/wave.tsx","./src/stores/app.ts","./src/views/home.tsx","./src/views/onboarding.tsx","./src/views/settings.tsx"],"version":"5.9.3"}
+{"root":["./src/app.tsx","./src/main.tsx","./src/components/modelprogress.tsx","./src/components/overlay.tsx","./src/components/updatebanner.tsx","./src/components/wave.tsx","./src/stores/app.ts","./src/views/home.tsx","./src/views/onboarding.tsx","./src/views/settings.tsx"],"version":"5.9.3"}

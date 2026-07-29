@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
+import threading
 import traceback
 from dataclasses import asdict
 from typing import Any, Callable
@@ -44,6 +45,9 @@ class IpcServer:
         self.recorder: Recorder | None = None
         self.llm_downloader = LlmDownloader(config_dir() / "models" / "llm")
         self._running = True
+        # The model watcher writes from its own thread while the main loop may
+        # be writing a response — one lock guards the whole protocol stream.
+        self._out_lock = threading.Lock()
         self._handlers: dict[str, Callable[[dict], Any]] = {
             "initialize": self._initialize,
             "start_recording": self._start_recording,
@@ -63,8 +67,13 @@ class IpcServer:
 
     # --- handlers -----------------------------------------------------
 
+    def _emit_model_progress(self, payload: dict) -> None:
+        """Notification (no id) about a model load in flight. The shell shows it
+        as a progress bar and treats it as proof the engine is still working."""
+        self._write({"jsonrpc": "2.0", "method": "model:progress", "params": payload})
+
     def _initialize(self, params: dict) -> dict:
-        info = self.pipeline.warmup()
+        info = self.pipeline.warmup(on_progress=self._emit_model_progress)
         log.info("warmup done: %s", info)
         try:
             devices = list_devices()
@@ -115,7 +124,7 @@ class IpcServer:
         result = {"ok": True}
         if stt_changed:
             # a resident model won't change on its own — rebuild it
-            result.update(self.pipeline.reload_stt())
+            result.update(self.pipeline.reload_stt(on_progress=self._emit_model_progress))
         return result
 
     def _reload_user_data(self, params: dict) -> dict:
@@ -165,10 +174,17 @@ class IpcServer:
             return json.dumps({"jsonrpc": "2.0", "id": req_id,
                                "error": {"code": -32000, "message": str(exc)}})
 
+    def _write(self, payload: dict) -> None:
+        self._write_line(json.dumps(payload, ensure_ascii=False))
+
+    def _write_line(self, line: str) -> None:
+        with self._out_lock:
+            sys.stdout.write(line + "\n")
+            sys.stdout.flush()
+
     def serve_forever(self) -> None:
         """Blocking loop over stdin/stdout. Logs go to stderr, protocol to stdout."""
         stdin = sys.stdin
-        stdout = sys.stdout
         while self._running:
             line = stdin.readline()
             if not line:  # shell closed the pipe -> exit
@@ -178,5 +194,4 @@ class IpcServer:
                 continue
             response = self.handle_line(line)
             if response is not None:
-                stdout.write(response + "\n")
-                stdout.flush()
+                self._write_line(response)

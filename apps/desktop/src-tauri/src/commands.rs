@@ -112,33 +112,6 @@ pub fn open_main(app: AppHandle) {
     }
 }
 
-/// Ask GitHub for the latest release and compare it to the running version.
-/// Notification-only: we never auto-download, just point the user at the page.
-#[tauri::command]
-pub fn check_update() -> Result<Value, String> {
-    const REPO: &str = "pandaman77/openflow";
-    let current = env!("CARGO_PKG_VERSION");
-    let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
-
-    let resp = ureq::get(&url)
-        .set("User-Agent", "OpenFlow-updater")
-        .timeout(std::time::Duration::from_secs(8))
-        .call()
-        .map_err(|e| format!("не удалось проверить обновления: {e}"))?;
-    let body: Value = resp.into_json().map_err(|e| e.to_string())?;
-
-    let latest = body["tag_name"].as_str().unwrap_or("").trim_start_matches('v');
-    let html_url = body["html_url"].as_str().unwrap_or("");
-    let available = !latest.is_empty() && version_gt(latest, current);
-
-    Ok(json!({
-        "current": current,
-        "latest": latest,
-        "update_available": available,
-        "url": html_url,
-    }))
-}
-
 /// Open a URL in the user's default browser (used for the release page).
 #[tauri::command]
 pub fn open_url(url: String) -> Result<(), String> {
@@ -158,24 +131,56 @@ pub fn open_url(url: String) -> Result<(), String> {
     Ok(())
 }
 
-/// True if `a` is a higher semver-ish version than `b` (numeric dotted compare).
-fn version_gt(a: &str, b: &str) -> bool {
-    let parse = |s: &str| -> Vec<u32> {
-        s.split('.').map(|p| p.parse().unwrap_or(0)).collect()
-    };
-    let (va, vb) = (parse(a), parse(b));
-    for i in 0..va.len().max(vb.len()) {
-        let (x, y) = (va.get(i).copied().unwrap_or(0), vb.get(i).copied().unwrap_or(0));
-        if x != y {
-            return x > y;
-        }
-    }
-    false
-}
-
 #[tauri::command]
 pub fn get_audio_level(engine: State<'_, Engine>) -> Result<Value, String> {
     engine.call("get_level", json!({}))
+}
+
+/// True for a portable install (a `portable.txt` next to the exe).
+///
+/// The updater installs through the NSIS bundle, which would drop a second
+/// copy into %LOCALAPPDATA% instead of updating the folder the user actually
+/// runs. Those installs get a download link rather than an update button.
+#[tauri::command]
+pub fn is_portable() -> bool {
+    crate::paths::is_portable()
+}
+
+/// Is the pointer actually over the overlay right now?
+///
+/// The overlay resizes under the cursor (sliver -> pill -> recording pill), and
+/// Windows does not reliably deliver a mouseleave when the window shrinks away
+/// from a pointer that never moved. The React side would stay "hovered" forever
+/// and keep the idle pill on screen after a dictation ended. Asking the OS is
+/// the only answer that can't get stuck.
+#[tauri::command]
+pub fn cursor_over_overlay(app: AppHandle) -> bool {
+    let Some(overlay) = app.get_webview_window("overlay") else {
+        return false;
+    };
+    #[cfg(windows)]
+    {
+        use windows::Win32::Foundation::{HWND, POINT, RECT};
+        use windows::Win32::UI::WindowsAndMessaging::{GetCursorPos, GetWindowRect};
+        let Ok(handle) = overlay.hwnd() else {
+            return false;
+        };
+        let raw = handle.0 as isize;
+        unsafe {
+            let mut point = POINT::default();
+            let mut rect = RECT::default();
+            if GetCursorPos(&mut point).is_err() || GetWindowRect(HWND(raw as _), &mut rect).is_err()
+            {
+                return false;
+            }
+            point.x >= rect.left && point.x < rect.right && point.y >= rect.top && point.y < rect.bottom
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = overlay;
+        false
+    }
 }
 
 /// Move + resize the overlay to its bottom-center spot in ONE native call.
@@ -220,24 +225,4 @@ pub fn fit_overlay(app: AppHandle, w: f64, h: f64) -> Result<(), String> {
         let _ = overlay.set_position(tauri::PhysicalPosition::new(x, y));
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::version_gt;
-
-    #[test]
-    fn newer_versions_win() {
-        assert!(version_gt("0.2.0", "0.1.0"));
-        assert!(version_gt("1.0.0", "0.9.9"));
-        assert!(version_gt("0.1.1", "0.1.0"));
-    }
-
-    #[test]
-    fn equal_or_older_do_not() {
-        assert!(!version_gt("0.1.0", "0.1.0"));
-        assert!(!version_gt("0.1.0", "0.1")); // trailing zero == missing
-        assert!(!version_gt("0.1.0", "0.2.0"));
-        assert!(!version_gt("0.9.9", "1.0.0"));
-    }
 }

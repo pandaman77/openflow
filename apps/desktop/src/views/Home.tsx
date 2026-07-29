@@ -1,10 +1,13 @@
 import { useAppStore } from "../stores/app";
+import ModelProgressBar from "../components/ModelProgress";
 import Wave from "../components/Wave";
 
 /** Home: one hero answer — can I dictate right now? — then details. */
 export default function Home() {
-  const { engineReady, engineError, engineInfo, recording, lastResult, hotkeys, config } =
+  const { engineReady, engineError, engineInfo, modelProgress, recording, lastResult, hotkeys, config } =
     useAppStore();
+
+  const downloading = !engineReady && !engineError && modelProgress !== null;
 
   const status = recording
     ? { title: "Идёт запись", sub: "Отпусти хоткей — текст вставится сам", wave: "hot" as const }
@@ -12,7 +15,9 @@ export default function Home() {
       ? { title: "Движок не запустился", sub: engineError, wave: "quiet" as const }
       : engineReady
         ? { title: "Готов к диктовке", sub: "Зажми хоткей в любом приложении и говори", wave: "ready" as const }
-        : { title: "Прогреваю движок…", sub: "Загружаю модель распознавания — при первом запуске это займёт до минуты", wave: "quiet" as const };
+        : downloading
+          ? { title: "Качаю модель", sub: "", wave: "quiet" as const }
+          : { title: "Прогреваю движок…", sub: "Загружаю модель распознавания", wave: "quiet" as const };
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -22,9 +27,15 @@ export default function Home() {
           <h1 className="font-display text-3xl font-semibold tracking-tight">
             {status.title}
           </h1>
-          <p className={`mt-2 text-sm ${engineError ? "text-coral" : "text-subtext"}`}>
-            {status.sub}
-          </p>
+          {downloading && modelProgress ? (
+            <div className="mt-3">
+              <ModelProgressBar progress={modelProgress} />
+            </div>
+          ) : (
+            <p className={`mt-2 text-sm ${engineError ? "text-coral" : "text-subtext"}`}>
+              {status.sub}
+            </p>
+          )}
         </div>
         <Wave state={status.wave} height={44} className="mt-2" />
         <div className="flex flex-wrap gap-x-6 gap-y-1 border-t border-line px-6 py-3">

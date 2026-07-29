@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { useAppStore } from "./stores/app";
 import Settings from "./views/Settings";
 import Onboarding from "./views/Onboarding";
 import Home from "./views/Home";
+import UpdateBanner from "./components/UpdateBanner";
 import Wave from "./components/Wave";
 
 type View = "home" | "settings" | "onboarding";
@@ -63,6 +63,9 @@ export default function App() {
         </div>
       </nav>
       <main className="flex-1 overflow-y-auto px-8 py-7">
+        <div className="mx-auto max-w-2xl">
+          <UpdateBanner />
+        </div>
         {view === "home" ? <Home /> : <Settings />}
       </main>
     </div>
@@ -92,37 +95,24 @@ function NavButton({
   );
 }
 
-type UpdateState =
-  | { status: "idle" }
-  | { status: "checking" }
-  | { status: "current" }
-  | { status: "available"; latest: string; url: string }
-  | { status: "error" };
+type CheckState = "idle" | "checking" | "current" | "error";
 
+/** Version plus a manual re-check. The automatic one runs at startup; this is
+ *  for when someone knows a release just landed. A found update shows up in
+ *  the banner, so there is only ever one place offering to install. */
 function VersionFooter() {
   const [version, setVersion] = useState("");
-  const [update, setUpdate] = useState<UpdateState>({ status: "idle" });
+  const [state, setState] = useState<CheckState>("idle");
+  const { update, checkUpdate } = useAppStore();
 
   useEffect(() => {
     void getVersion().then(setVersion).catch(() => setVersion(""));
   }, []);
 
-  const check = async () => {
-    setUpdate({ status: "checking" });
-    try {
-      const r = (await invoke("check_update")) as {
-        update_available: boolean;
-        latest: string;
-        url: string;
-      };
-      setUpdate(
-        r.update_available
-          ? { status: "available", latest: r.latest, url: r.url }
-          : { status: "current" },
-      );
-    } catch {
-      setUpdate({ status: "error" });
-    }
+  const runCheck = async () => {
+    setState("checking");
+    const outcome = await checkUpdate();
+    setState(outcome === "available" ? "idle" : outcome === "current" ? "current" : "error");
   };
 
   return (
@@ -130,24 +120,19 @@ function VersionFooter() {
       <div className="font-mono text-[10px] text-subtext">
         OpenFlow v{version || "…"}
       </div>
-      {update.status === "available" ? (
-        <button
-          onClick={() => void invoke("open_url", { url: update.url })}
-          className="mt-1 text-[10px] text-amber hover:underline"
-        >
-          Доступна v{update.latest} — скачать
-        </button>
+      {update ? (
+        <div className="mt-1 text-[10px] text-amber">Доступна v{update.version}</div>
       ) : (
         <button
-          onClick={() => void check()}
-          disabled={update.status === "checking"}
+          onClick={() => void runCheck()}
+          disabled={state === "checking"}
           className="mt-1 text-[10px] text-subtext hover:text-text disabled:opacity-50"
         >
-          {update.status === "checking"
+          {state === "checking"
             ? "Проверяю…"
-            : update.status === "current"
+            : state === "current"
               ? "Актуальная версия ✓"
-              : update.status === "error"
+              : state === "error"
                 ? "Не удалось проверить"
                 : "Проверить обновления"}
         </button>

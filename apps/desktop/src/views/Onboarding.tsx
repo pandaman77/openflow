@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore, DictationResult } from "../stores/app";
+import ModelProgressBar from "../components/ModelProgress";
 
 const STEPS = ["Микрофон", "Модель", "Хоткей", "Проверка"] as const;
 
 /** First-launch wizard: mic -> model -> hotkey -> live test. */
 export default function Onboarding({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(0);
-  const { devices, config, setConfig, engineReady, engineError, hotkeys } = useAppStore();
+  const { devices, config, setConfig, engineReady, engineError, modelProgress, hotkeys } =
+    useAppStore();
   const [testResult, setTestResult] = useState<DictationResult | null>(null);
   const [testing, setTesting] = useState(false);
 
@@ -74,14 +76,20 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
               <h2 className="mb-3 text-xl font-semibold">Модель распознавания</h2>
               <p className="mb-4 text-sm text-subtext">
                 {engineReady
-                  ? "Движок уже готов с моделью по умолчанию (small). Поменять можно в настройках."
+                  ? "Модель на месте, движок готов. Сменить его можно в настройках."
                   : engineError
                     ? "Движок не смог запуститься:"
-                    : "Движок загружает модель — при первом запуске она скачивается (~500 МБ), это происходит один раз."}
+                    : "При первом запуске модель скачивается на компьютер. Можно спокойно закрыть окно: загрузка идёт дальше, а мы всё сделаем сами."}
               </p>
-              <div className={`rounded-lg p-3 text-sm ${engineError ? "bg-coral/10 text-coral" : "bg-raised"}`}>
-                {engineReady ? "✓ Готов" : engineError ? engineError : "⏳ Загрузка…"}
-              </div>
+              {modelProgress && !engineReady && !engineError ? (
+                <div className="rounded-lg bg-raised p-3">
+                  <ModelProgressBar progress={modelProgress} />
+                </div>
+              ) : (
+                <div className={`rounded-lg p-3 text-sm ${engineError ? "bg-coral/10 text-coral" : "bg-raised"}`}>
+                  {engineReady ? "✓ Готов" : engineError ? engineError : "⏳ Загрузка…"}
+                </div>
+              )}
             </div>
           )}
 

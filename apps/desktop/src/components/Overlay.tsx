@@ -133,6 +133,11 @@ export default function Overlay() {
         setState("recording");
         setSeconds(0);
         setLevels(Array(BAR_COUNT).fill(0.05));
+        // Drop any hover: the window resizes under the pointer during a
+        // dictation, and a stale hover brings the idle pill back on top of
+        // the recording one the moment recording ends.
+        setHovered(false);
+        setMenuOpen(false);
       }),
       listen("dictation:processing", () => setState("processing")),
       listen("dictation:finished", () => setState("idle")),
@@ -175,6 +180,24 @@ export default function Overlay() {
       stale = true;
     };
   }, [state, hovered, menuOpen]);
+
+  // Windows doesn't reliably send mouseleave when the window shrinks away from
+  // a pointer that never moved, so an expanded pill could hang around forever.
+  // While expanded, ask the OS where the cursor actually is.
+  useEffect(() => {
+    if (!hovered) return;
+    const timer = setInterval(async () => {
+      try {
+        if (!(await invoke("cursor_over_overlay"))) {
+          setHovered(false);
+          setMenuOpen(false);
+        }
+      } catch {
+        /* command unavailable in dev preview */
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [hovered]);
 
   useEffect(() => {
     if (state === "recording") {

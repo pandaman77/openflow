@@ -27,6 +27,7 @@ from .cleanup.profiles import Profile, profile_for_app
 from .cleanup.rules import fast_cleanup, literal_cleanup
 from .dictionary import PersonalDictionary
 from .language import LanguageTracker
+from . import model_progress
 from .snippets import SnippetStore
 from .stt import ONNX_MODELS, OnnxTranscriber, Transcriber
 from .vad import has_speech
@@ -93,14 +94,20 @@ class Pipeline:
             )
         return self._translate_whisper
 
-    def warmup(self) -> dict[str, Any]:
-        """Load the STT model up-front so the first dictation isn't slow."""
-        self.transcriber.load()
+    def warmup(self, on_progress: model_progress.ProgressCallback | None = None) -> dict[str, Any]:
+        """Load the STT model up-front so the first dictation isn't slow.
+
+        On a fresh install this downloads the weights (gigabytes), so the
+        caller gets ticks throughout: they drive the progress bar and tell the
+        shell the engine is working rather than hung.
+        """
+        with model_progress.watch(self.transcriber, on_progress):
+            self.transcriber.load()
         return {"stt_device": self.transcriber.resolved_device,
                 "stt_engine": self.config.get("stt.engine"),
                 "smart_available": self.smart.available()}
 
-    def reload_stt(self) -> dict[str, Any]:
+    def reload_stt(self, on_progress: model_progress.ProgressCallback | None = None) -> dict[str, Any]:
         """Swap in a fresh transcriber after the STT engine/model config changed.
         The old model was resident; without this a switch has no effect."""
         new_sig = self._stt_signature()
@@ -109,7 +116,10 @@ class Pipeline:
         log.info("stt config changed %s -> %s, reloading", self._stt_sig, new_sig)
         self._stt_sig = new_sig
         self.transcriber = self._build_transcriber()
-        self.transcriber.load()
+        # Switching engines can pull a model that isn't cached yet — same
+        # download, same need for progress, as the first launch.
+        with model_progress.watch(self.transcriber, on_progress):
+            self.transcriber.load()
         self._translate_whisper = None  # engine may have changed; drop cached one
         return {"reloaded": True, "stt_device": self.transcriber.resolved_device}
 
